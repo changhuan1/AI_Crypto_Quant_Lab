@@ -46,6 +46,7 @@ conda activate ai_crypto_quant_lab
 python -m src.jobs.init_db
 python -m src.data_ingestion.crypto_prices_ccxt
 python -m src.jobs.crypto_update
+python -m src.backtest.backtest_crypto
 ```
 
 Current status:
@@ -53,8 +54,11 @@ Current status:
 - `src.jobs.init_db` initializes the local DuckDB database.
 - `src.data_ingestion.crypto_prices_ccxt` collects BTC/USDT and ETH/USDT daily OHLCV data through CCXT. The default exchange is OKX because Binance may rate-limit or block some IPs.
 - `src.jobs.crypto_update` calculates first-pass crypto price features and prints the BTC risk regime.
+- `src.backtest.backtest_crypto` generates daily crypto rotation signals, runs a simple rebalance backtest, and compares it with BTC buy-and-hold.
 
 The Streamlit dashboard is still reserved for a later milestone.
+
+If DuckDB reports that `data/db/quant_lab.duckdb` is already in use, close any editor tab or database plugin that has opened the file, then rerun the command.
 
 ## Documentation
 
