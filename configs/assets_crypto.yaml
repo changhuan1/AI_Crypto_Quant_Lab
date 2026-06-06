@@ -1,0 +1,20 @@
+core:
+  - symbol: BTC/USDT
+    role: benchmark
+    max_weight: 0.30
+  - symbol: ETH/USDT
+    role: benchmark
+    max_weight: 0.30
+
+watchlist_rules:
+  min_quote_volume_24h_usd: 50000000
+  min_history_days: 365
+  exclude_new_listing_days: 90
+  exclude_if_spread_too_wide: true
+  exclude_meme: true
+  exclude_leverage_token: true
+  exclude_futures: true
+
+manual_watchlist:
+  - BTC/USDT
+  - ETH/USDT

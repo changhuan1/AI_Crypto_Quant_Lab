@@ -1,0 +1,26 @@
+global:
+  max_total_drawdown_warning: -0.05
+  max_total_drawdown_reduce: -0.08
+  max_total_drawdown_stop: -0.12
+  allow_leverage: false
+  allow_short: false
+  allow_derivatives: false
+
+ai_market:
+  max_gross_exposure: 0.80
+  max_single_position: 0.25
+  max_positions: 5
+  rebalance_frequency: weekly
+  min_avg_turnover_20d: 50000000
+  avoid_limit_up_chasing: true
+
+crypto:
+  max_gross_exposure: 0.60
+  max_core_position: 0.30
+  max_satellite_position: 0.08
+  max_ai_crypto_total: 0.20
+  max_positions: 5
+  allow_futures: false
+  allow_margin: false
+  allow_new_listings: false
+  min_quote_volume_24h_usd: 50000000

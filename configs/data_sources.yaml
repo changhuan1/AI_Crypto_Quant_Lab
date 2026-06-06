@@ -1,0 +1,22 @@
+market_data:
+  ai_market:
+    primary: akshare
+    frequency: daily
+  crypto:
+    primary: ccxt
+    exchange: binance
+    frequency: daily
+
+alternative_data:
+  github:
+    enabled: true
+    auth_env: GITHUB_TOKEN
+  huggingface:
+    enabled: true
+    auth_env: HF_TOKEN
+  news:
+    enabled: false
+  coingecko:
+    enabled: false
+  defillama:
+    enabled: false

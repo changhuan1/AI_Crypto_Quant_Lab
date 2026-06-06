@@ -1,0 +1,16 @@
+score_weights:
+  price_momentum: 0.30
+  volume_confirmation: 0.20
+  ai_news_heat: 0.20
+  open_source_heat: 0.20
+  risk_penalty: -0.10
+
+rebalance:
+  frequency: weekly
+  top_n: 5
+  min_score: 0.0
+
+risk_filter:
+  require_above_ma120: true
+  avoid_extreme_20d_return: true
+  avoid_low_liquidity: true

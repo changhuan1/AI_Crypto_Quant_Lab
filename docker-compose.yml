@@ -1,0 +1,9 @@
+services:
+  app:
+    image: python:3.11-slim
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    env_file:
+      - .env
+    command: ["bash", "-lc", "python --version && echo 'Scaffold only. Add app command after implementation.'"]

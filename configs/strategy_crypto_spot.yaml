@@ -1,0 +1,18 @@
+risk_regime:
+  btc_ma_long: 120
+  btc_ma_mid: 60
+  btc_momentum_window: 20
+  volatility_window: 30
+
+score_weights:
+  price_momentum: 0.35
+  volume_acceleration: 0.20
+  relative_strength_vs_btc: 0.15
+  narrative_heat: 0.15
+  fundamental_confirmation: 0.10
+  risk_penalty: -0.20
+
+rebalance:
+  frequency: daily
+  top_n: 5
+  min_score: 0.0

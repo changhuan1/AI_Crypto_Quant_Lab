@@ -1,0 +1,44 @@
+ai_themes:
+  ai_infrastructure:
+    name: AI基础设施
+    keywords:
+      - 半导体
+      - 算力
+      - 数据中心
+      - 云计算
+      - 光模块
+      - 通信设备
+  ai_software:
+    name: AI软件应用
+    keywords:
+      - 计算机
+      - 软件
+      - 办公
+      - 教育
+      - 工业软件
+      - 金融科技
+      - 医疗AI
+  ai_data:
+    name: AI数据层
+    keywords:
+      - 数据要素
+      - 数据治理
+      - 数据安全
+      - 知识图谱
+      - 向量数据库
+  ai_terminal_robotics:
+    name: AI终端与机器人
+    keywords:
+      - 机器人
+      - 智能驾驶
+      - 端侧AI
+      - 消费电子
+
+selection_rules:
+  require_data_available: true
+  require_high_liquidity: true
+  require_non_st: true
+  require_ai_theme_mapping: true
+  min_history_years: 2
+
+manual_watchlist: []
