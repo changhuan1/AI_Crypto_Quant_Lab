@@ -4,7 +4,7 @@ market_data:
     frequency: daily
   crypto:
     primary: ccxt
-    exchange: binance
+    exchange: okx
     frequency: daily
 
 alternative_data:

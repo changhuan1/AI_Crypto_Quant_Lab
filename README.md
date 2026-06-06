@@ -42,12 +42,19 @@ external/      Optional external tools such as Freqtrade
 The first implementation milestone should make these commands possible:
 
 ```powershell
+conda activate ai_crypto_quant_lab
 python -m src.jobs.init_db
 python -m src.data_ingestion.crypto_prices_ccxt
-streamlit run src/dashboard/app.py
+python -m src.jobs.crypto_update
 ```
 
-Those commands are intentionally not implemented in this initial scaffold.
+Current status:
+
+- `src.jobs.init_db` initializes the local DuckDB database.
+- `src.data_ingestion.crypto_prices_ccxt` collects BTC/USDT and ETH/USDT daily OHLCV data through CCXT. The default exchange is OKX because Binance may rate-limit or block some IPs.
+- `src.jobs.crypto_update` calculates first-pass crypto price features and prints the BTC risk regime.
+
+The Streamlit dashboard is still reserved for a later milestone.
 
 ## Documentation
 
