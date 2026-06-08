@@ -2,9 +2,9 @@
 
 Future strategy modules:
 
-- AI market scoring
+- A-share market scoring
 - crypto scoring
-- AI rotation
+- A-share rotation
 - crypto rotation
 - position sizing
 - risk control

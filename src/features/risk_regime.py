@@ -23,7 +23,7 @@ def classify_btc_risk_regime(features: pd.DataFrame) -> str:
     return "neutral"
 
 
-def classify_ai_market_risk_regime(features: pd.DataFrame) -> str:
+def classify_a_share_market_risk_regime(features: pd.DataFrame) -> str:
     latest_date = features["date"].max()
     latest = features.loc[features["date"] == latest_date].copy()
 

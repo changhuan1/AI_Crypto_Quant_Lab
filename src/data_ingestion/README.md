@@ -2,9 +2,8 @@
 
 Future collectors:
 
-- AI market prices
+- A-share broad-market prices
 - crypto OHLCV prices through CCXT
-- GitHub repository metrics
-- Hugging Face model metrics
+- A-share breadth and liquidity data
 - news and announcement feeds
 - CoinGecko and DefiLlama data

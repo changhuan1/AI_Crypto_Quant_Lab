@@ -6,11 +6,11 @@ import pandas as pd
 
 from src.features.price_features import add_price_features
 from src.features.relative_strength import add_relative_strength
-from src.features.risk_regime import classify_ai_market_risk_regime
+from src.features.risk_regime import classify_a_share_market_risk_regime
 
 
 DB_PATH = Path("data/db/quant_lab.duckdb")
-BENCHMARK_ASSET_ID = "AI_ETF_515000"
+BENCHMARK_ASSET_ID = "A_ETF_510050"
 
 FEATURE_COLUMNS = [
     "ret_1d",
@@ -27,19 +27,19 @@ FEATURE_COLUMNS = [
 ]
 
 
-def load_ai_market_prices(db_path: Path = DB_PATH) -> pd.DataFrame:
+def load_a_share_market_prices(db_path: Path = DB_PATH) -> pd.DataFrame:
     with duckdb.connect(str(db_path)) as con:
         return con.execute(
             """
             SELECT *
             FROM prices_daily
-            WHERE asset_id LIKE 'AI_ETF_%'
+            WHERE asset_id LIKE 'A_ETF_%'
             ORDER BY asset_id, date
             """
         ).df()
 
 
-def build_ai_market_features(prices: pd.DataFrame) -> pd.DataFrame:
+def build_a_share_market_features(prices: pd.DataFrame) -> pd.DataFrame:
     features = add_price_features(prices)
     return add_relative_strength(features, benchmark_asset_id=BENCHMARK_ASSET_ID, window=20)
 
@@ -72,17 +72,19 @@ def save_features(feature_rows: pd.DataFrame, db_path: Path = DB_PATH) -> None:
 
 
 def main() -> None:
-    prices = load_ai_market_prices()
+    prices = load_a_share_market_prices()
     if prices.empty:
-        raise RuntimeError("No AI market prices found. Run: python -m src.data_ingestion.ai_market_prices")
+        raise RuntimeError(
+            "No A-share market prices found. Run: python -m src.data_ingestion.a_share_market_prices"
+        )
 
-    features = build_ai_market_features(prices)
+    features = build_a_share_market_features(prices)
     feature_rows = to_feature_store_rows(features)
     save_features(feature_rows)
 
-    regime = classify_ai_market_risk_regime(features)
-    print(f"AI market features saved: {len(feature_rows)} rows")
-    print(f"AI market risk regime: {regime}")
+    regime = classify_a_share_market_risk_regime(features)
+    print(f"A-share market features saved: {len(feature_rows)} rows")
+    print(f"A-share market risk regime: {regime}")
 
 
 if __name__ == "__main__":

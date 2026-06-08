@@ -8,10 +8,10 @@ import yaml
 
 
 DB_PATH = Path("data/db/quant_lab.duckdb")
-ASSETS_CONFIG_PATH = Path("configs/assets_ai.yaml")
+ASSETS_CONFIG_PATH = Path("configs/assets_a_share.yaml")
 
 
-def load_ai_watchlist(config_path: Path = ASSETS_CONFIG_PATH) -> list[dict]:
+def load_a_share_watchlist(config_path: Path = ASSETS_CONFIG_PATH) -> list[dict]:
     with config_path.open("r", encoding="utf-8") as file:
         config = yaml.safe_load(file)
     return config.get("manual_watchlist", [])
@@ -45,7 +45,7 @@ def fetch_etf_daily(
         }
     )
     df["date"] = pd.to_datetime(df["date"]).dt.date
-    df["asset_id"] = f"AI_ETF_{symbol}"
+    df["asset_id"] = f"A_ETF_{symbol}"
     df["source"] = "akshare"
     df["created_at"] = datetime.now(timezone.utc)
 
@@ -98,12 +98,12 @@ def save_assets(watchlist: list[dict], db_path: Path = DB_PATH) -> None:
     rows = pd.DataFrame(
         [
             {
-                "asset_id": f"AI_ETF_{item['symbol']}",
+                "asset_id": f"A_ETF_{item['symbol']}",
                 "symbol": item["symbol"],
                 "name": item.get("name", item["symbol"]),
-                "market": "cn",
-                "asset_type": "etf",
-                "theme": item.get("theme", ""),
+                "market": "cn_a_share",
+                "asset_type": "broad_etf",
+                "theme": item.get("segment", ""),
                 "is_active": True,
                 "liquidity_tier": "watchlist",
                 "created_at": datetime.now(timezone.utc),
@@ -132,17 +132,21 @@ def save_assets(watchlist: list[dict], db_path: Path = DB_PATH) -> None:
         )
 
 
-def update_ai_market_prices(
+def update_a_share_market_prices(
     start_date: str = "20200101",
     end_date: str = "20261231",
 ) -> pd.DataFrame:
-    watchlist = load_ai_watchlist()
+    watchlist = load_a_share_watchlist()
     frames = []
 
     for asset in watchlist:
         symbol = asset["symbol"]
-        print(f"Fetching AI market ETF {symbol} ({asset.get('name', symbol)})")
-        df = fetch_etf_daily(symbol, start_date=start_date, end_date=end_date)
+        print(f"Fetching A-share market ETF {symbol} ({asset.get('name', symbol)})")
+        try:
+            df = fetch_etf_daily(symbol, start_date=start_date, end_date=end_date)
+        except Exception as exc:
+            print(f"Skipped {symbol}: {exc}")
+            continue
         if not df.empty:
             frames.append(df)
 
@@ -156,8 +160,8 @@ def update_ai_market_prices(
 
 
 def main() -> None:
-    prices = update_ai_market_prices()
-    print(f"AI market prices saved: {len(prices)} rows")
+    prices = update_a_share_market_prices()
+    print(f"A-share market prices saved: {len(prices)} rows")
 
 
 if __name__ == "__main__":

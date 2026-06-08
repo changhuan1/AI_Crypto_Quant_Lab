@@ -1,9 +1,8 @@
 score_weights:
-  price_momentum: 0.30
+  price_momentum: 0.35
   volume_confirmation: 0.20
-  ai_news_heat: 0.20
-  open_source_heat: 0.20
-  risk_penalty: -0.10
+  breadth_proxy: 0.20
+  risk_penalty: -0.15
 
 rebalance:
   frequency: weekly

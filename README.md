@@ -1,6 +1,6 @@
-# AI Crypto Quant Lab
+# A-Share Crypto Quant Lab
 
-AI Crypto Quant Lab is a research-first quantitative lab for AI-market and crypto-spot analysis.
+A-Share Crypto Quant Lab is a research-first quantitative lab for A-share broad-market and crypto-spot analysis.
 
 The v0.1 goal is to build a low-cost, explainable loop:
 
@@ -47,9 +47,9 @@ python -m src.jobs.init_db
 python -m src.data_ingestion.crypto_prices_ccxt
 python -m src.jobs.crypto_update
 python -m src.backtest.backtest_crypto
-python -m src.data_ingestion.ai_market_prices
-python -m src.jobs.ai_market_update
-python -m src.backtest.backtest_ai_market
+python -m src.data_ingestion.a_share_market_prices
+python -m src.jobs.a_share_market_update
+python -m src.backtest.backtest_a_share_market
 ```
 
 Current status:
@@ -58,9 +58,9 @@ Current status:
 - `src.data_ingestion.crypto_prices_ccxt` collects BTC/USDT and ETH/USDT daily OHLCV data through CCXT. The default exchange is OKX because Binance may rate-limit or block some IPs.
 - `src.jobs.crypto_update` calculates first-pass crypto price features and prints the BTC risk regime.
 - `src.backtest.backtest_crypto` generates daily crypto rotation signals, runs a simple rebalance backtest, and compares it with BTC buy-and-hold.
-- `src.data_ingestion.ai_market_prices` collects a research-only AI/technology ETF watchlist through AKShare.
-- `src.jobs.ai_market_update` calculates first-pass AI market price features and prints the AI market risk regime.
-- `src.backtest.backtest_ai_market` generates weekly AI market rotation signals and compares them with a benchmark ETF buy-and-hold.
+- `src.data_ingestion.a_share_market_prices` collects a research-only A-share broad-market ETF watchlist through AKShare.
+- `src.jobs.a_share_market_update` calculates first-pass A-share market price features and prints the A-share market risk regime.
+- `src.backtest.backtest_a_share_market` generates weekly A-share market rotation signals and compares them with a benchmark ETF buy-and-hold.
 
 The Streamlit dashboard is still reserved for a later milestone.
 
@@ -68,4 +68,4 @@ If DuckDB reports that `data/db/quant_lab.duckdb` is already in use, close any e
 
 ## Documentation
 
-See [docs/AI_Crypto_Quant_Lab_实施方案_v0.1.md](docs/AI_Crypto_Quant_Lab_实施方案_v0.1.md) for the full v0.1 implementation plan.
+See [docs/A_SHARE_MARKET_PLAN.md](docs/A_SHARE_MARKET_PLAN.md) for the updated A-share market implementation plan. The original AI-market plan is kept in `docs/` as historical context.

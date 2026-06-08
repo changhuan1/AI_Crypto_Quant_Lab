@@ -1,1 +1,1 @@
-"""AI Crypto Quant Lab package."""
+"""A-share and crypto quant lab package."""

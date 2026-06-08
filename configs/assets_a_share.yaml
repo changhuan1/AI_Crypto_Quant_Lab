@@ -1,0 +1,38 @@
+a_share_market:
+  benchmark:
+    symbol: "510050"
+    name: 上证50ETF
+    asset_id: "A_ETF_510050"
+    role: shanghai_large_cap_benchmark
+
+  watchlist_rules:
+    min_history_years: 2
+    prefer_broad_based_etf: true
+    require_high_liquidity: true
+    avoid_theme_only_assets: true
+
+manual_watchlist:
+  - symbol: "510050"
+    name: 上证50ETF
+    segment: sh_large_cap
+  - symbol: "510300"
+    name: 沪深300ETF
+    segment: broad_large_cap
+  - symbol: "510500"
+    name: 中证500ETF
+    segment: mid_cap
+  - symbol: "512100"
+    name: 中证1000ETF
+    segment: small_mid_cap
+  - symbol: "159915"
+    name: 创业板ETF
+    segment: growth
+  - symbol: "588000"
+    name: 科创50ETF
+    segment: sci_tech_growth
+  - symbol: "510880"
+    name: 红利ETF
+    segment: dividend_value
+  - symbol: "510180"
+    name: 上证180ETF
+    segment: sh_broad_large_cap

@@ -6,7 +6,7 @@ global:
   allow_short: false
   allow_derivatives: false
 
-ai_market:
+a_share_market:
   max_gross_exposure: 0.80
   max_single_position: 0.25
   max_positions: 5
