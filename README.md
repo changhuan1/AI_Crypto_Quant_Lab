@@ -49,6 +49,7 @@ python -m src.jobs.crypto_update
 python -m src.backtest.backtest_crypto
 python -m src.data_ingestion.a_share_market_prices --limit 50
 python -m src.jobs.a_share_market_update
+python -m src.jobs.a_share_breadth_update
 python -m src.backtest.backtest_a_share_market
 ```
 
@@ -60,6 +61,7 @@ Current status:
 - `src.backtest.backtest_crypto` generates daily crypto rotation signals, runs a simple rebalance backtest, and compares it with BTC buy-and-hold.
 - `src.data_ingestion.a_share_market_prices` collects Shanghai Composite constituents through AKShare. Use `--limit 50` for a small smoke test, or omit it for the full constituent universe.
 - `src.jobs.a_share_market_update` calculates first-pass constituent-level price features and prints the A-share market risk regime.
+- `src.jobs.a_share_breadth_update` calculates Shanghai Composite constituent breadth, including up/down ratio, above-MA120 ratio, turnover expansion, and a market breadth score.
 - `src.backtest.backtest_a_share_market` generates weekly Shanghai Composite constituent stock-selection signals and compares them with the Shanghai Composite index.
 
 Full Shanghai Composite constituent ingestion can take a long time because it may fetch more than 2,000 stocks. Start with a smoke test, then run the full ingestion when the data source/network is stable:
