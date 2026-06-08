@@ -21,3 +21,24 @@ def classify_btc_risk_regime(features: pd.DataFrame) -> str:
         return "risk_on"
 
     return "neutral"
+
+
+def classify_ai_market_risk_regime(features: pd.DataFrame) -> str:
+    latest_date = features["date"].max()
+    latest = features.loc[features["date"] == latest_date].copy()
+
+    required = latest.dropna(subset=["ma_120", "ret_20d", "volatility_20d"])
+    if required.empty:
+        return "unknown"
+
+    above_ratio = required["above_ma_120"].mean()
+    avg_ret_20d = required["ret_20d"].mean()
+    avg_vol_20d = required["volatility_20d"].mean()
+
+    if above_ratio < 0.35 and avg_ret_20d < 0:
+        return "risk_off"
+
+    if above_ratio >= 0.60 and avg_ret_20d > 0 and avg_vol_20d < 0.04:
+        return "risk_on"
+
+    return "neutral"

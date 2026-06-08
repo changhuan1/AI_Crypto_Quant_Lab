@@ -41,4 +41,28 @@ selection_rules:
   require_ai_theme_mapping: true
   min_history_years: 2
 
-manual_watchlist: []
+manual_watchlist:
+  - symbol: "515000"
+    name: 科技ETF
+    theme: ai_infrastructure
+  - symbol: "159995"
+    name: 芯片ETF
+    theme: ai_infrastructure
+  - symbol: "512760"
+    name: 芯片ETF
+    theme: ai_infrastructure
+  - symbol: "515050"
+    name: 5GETF
+    theme: ai_infrastructure
+  - symbol: "159819"
+    name: 人工智能ETF
+    theme: ai_software
+  - symbol: "516510"
+    name: 云计算ETF
+    theme: ai_software
+  - symbol: "515400"
+    name: 大数据ETF
+    theme: ai_data
+  - symbol: "562500"
+    name: 机器人ETF
+    theme: ai_terminal_robotics

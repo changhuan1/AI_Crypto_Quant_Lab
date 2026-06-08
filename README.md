@@ -47,6 +47,9 @@ python -m src.jobs.init_db
 python -m src.data_ingestion.crypto_prices_ccxt
 python -m src.jobs.crypto_update
 python -m src.backtest.backtest_crypto
+python -m src.data_ingestion.ai_market_prices
+python -m src.jobs.ai_market_update
+python -m src.backtest.backtest_ai_market
 ```
 
 Current status:
@@ -55,6 +58,9 @@ Current status:
 - `src.data_ingestion.crypto_prices_ccxt` collects BTC/USDT and ETH/USDT daily OHLCV data through CCXT. The default exchange is OKX because Binance may rate-limit or block some IPs.
 - `src.jobs.crypto_update` calculates first-pass crypto price features and prints the BTC risk regime.
 - `src.backtest.backtest_crypto` generates daily crypto rotation signals, runs a simple rebalance backtest, and compares it with BTC buy-and-hold.
+- `src.data_ingestion.ai_market_prices` collects a research-only AI/technology ETF watchlist through AKShare.
+- `src.jobs.ai_market_update` calculates first-pass AI market price features and prints the AI market risk regime.
+- `src.backtest.backtest_ai_market` generates weekly AI market rotation signals and compares them with a benchmark ETF buy-and-hold.
 
 The Streamlit dashboard is still reserved for a later milestone.
 
