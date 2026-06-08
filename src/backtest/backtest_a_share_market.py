@@ -14,7 +14,7 @@ from src.strategies.a_share_rotation import generate_a_share_targets
 
 DB_PATH = Path("data/db/quant_lab.duckdb")
 STRATEGY_NAME = "a_share_market_rotation_v0"
-BENCHMARK_ASSET_ID = "A_ETF_510050"
+BENCHMARK_ASSET_ID = "A_INDEX_000001"
 
 
 def is_weekly_rebalance_date(date_value) -> bool:
@@ -54,6 +54,12 @@ def _score_for_asset(scores: pd.DataFrame, asset_id: str) -> float | None:
     if match.empty or pd.isna(match.iloc[0]):
         return None
     return float(match.iloc[0])
+
+
+def _latest_signal_date(signals: pd.DataFrame) -> object | None:
+    if signals.empty:
+        return None
+    return signals["date"].max()
 
 
 def save_signals(signals: pd.DataFrame, db_path: Path = DB_PATH) -> None:
@@ -136,6 +142,14 @@ def main() -> None:
     benchmark_metrics = calculate_metrics(benchmark_nav, periods_per_year=252)
 
     print(f"A-share market signals saved: {len(signals)} rows")
+    latest_date = _latest_signal_date(signals)
+    if latest_date is not None:
+        latest_targets = signals.loc[
+            (signals["date"] == latest_date) & (signals["asset_id"] != "CASH")
+        ].sort_values("score", ascending=False)
+        print(f"Latest rebalance date: {latest_date}")
+        print("Latest selected stocks:")
+        print(latest_targets[["asset_id", "score", "target_weight", "reason"]].head(30).to_string(index=False))
     print(f"Backtest rows: {len(nav)}")
     print("Strategy metrics:")
     for name, value in metrics.items():

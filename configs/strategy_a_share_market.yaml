@@ -6,10 +6,16 @@ score_weights:
 
 rebalance:
   frequency: weekly
-  top_n: 5
+  top_n: 30
   min_score: 0.0
+
+position:
+  max_single_position: 0.03
+  neutral_max_exposure: 0.50
+  risk_on_max_exposure: 0.80
 
 risk_filter:
   require_above_ma120: true
   avoid_extreme_20d_return: true
   avoid_low_liquidity: true
+  min_turnover_quantile: 0.50

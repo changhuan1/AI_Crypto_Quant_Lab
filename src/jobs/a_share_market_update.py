@@ -10,7 +10,7 @@ from src.features.risk_regime import classify_a_share_market_risk_regime
 
 
 DB_PATH = Path("data/db/quant_lab.duckdb")
-BENCHMARK_ASSET_ID = "A_ETF_510050"
+BENCHMARK_ASSET_ID = "A_INDEX_000001"
 
 FEATURE_COLUMNS = [
     "ret_1d",
@@ -33,7 +33,8 @@ def load_a_share_market_prices(db_path: Path = DB_PATH) -> pd.DataFrame:
             """
             SELECT *
             FROM prices_daily
-            WHERE asset_id LIKE 'A_ETF_%'
+            WHERE asset_id LIKE 'A_STOCK_%'
+               OR asset_id = 'A_INDEX_000001'
             ORDER BY asset_id, date
             """
         ).df()

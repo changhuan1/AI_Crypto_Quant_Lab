@@ -25,7 +25,10 @@ def classify_btc_risk_regime(features: pd.DataFrame) -> str:
 
 def classify_a_share_market_risk_regime(features: pd.DataFrame) -> str:
     latest_date = features["date"].max()
-    latest = features.loc[features["date"] == latest_date].copy()
+    latest = features.loc[
+        (features["date"] == latest_date)
+        & (features["asset_id"].str.startswith("A_STOCK_"))
+    ].copy()
 
     required = latest.dropna(subset=["ma_120", "ret_20d", "volatility_20d"])
     if required.empty:

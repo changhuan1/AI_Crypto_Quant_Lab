@@ -4,9 +4,9 @@ import pandas as pd
 def generate_a_share_targets(
     scores: pd.DataFrame,
     market_regime: str,
-    top_n: int = 5,
+    top_n: int = 30,
 ) -> dict[str, float]:
-    latest = scores.copy()
+    latest = scores.loc[scores["asset_id"].str.startswith("A_STOCK_")].copy()
 
     if market_regime in {"risk_off", "unknown"}:
         return {"CASH": 1.0}
@@ -22,7 +22,7 @@ def generate_a_share_targets(
     if candidates.empty:
         return {"CASH": 1.0}
 
-    weight = min(0.25, max_exposure / len(candidates))
+    weight = min(0.03, max_exposure / len(candidates))
     targets = {row["asset_id"]: weight for _, row in candidates.iterrows()}
     targets["CASH"] = max(0.0, 1.0 - sum(targets.values()))
     return targets
