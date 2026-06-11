@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import json
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -5,109 +9,112 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from src.jobs.init_db import DB_PATH
+from src.platform.backtest_service import run_backtest
+from src.platform.data_api import DataPortal
+from src.platform.models import BacktestRequest
+from src.platform.repository import ensure_platform_ready, list_strategies
 
-DB_PATH = Path("data/db/quant_lab.duckdb")
-A_SHARE_STRATEGY = "a_share_market_rotation_v0"
-CRYPTO_STRATEGY = "crypto_spot_rotation_v0"
-BREADTH_ASSET_ID = "A_MARKET_000001"
 
+APP_VERSION = "v1.0.0"
+PAGES = [
+    "首页",
+    "数据中心",
+    "策略中心",
+    "回测中心",
+    "回测结果",
+    "模拟交易",
+    "风控中心",
+    "任务中心",
+    "技术架构",
+]
 
-st.set_page_config(page_title="A-Share Crypto Quant Lab", layout="wide")
-st.title("A-Share Crypto Quant Lab")
-st.caption("上证指数成分股 + Crypto 的本地量化研究驾驶舱")
+st.set_page_config(page_title=f"Quant Platform {APP_VERSION}", layout="wide")
 
 
 @st.cache_data(show_spinner=False)
-def query(sql: str) -> pd.DataFrame:
+def query(sql: str, params: tuple | None = None) -> pd.DataFrame:
     with duckdb.connect(str(DB_PATH), read_only=True) as con:
-        return con.execute(sql).df()
+        return con.execute(sql, params or ()).df()
 
 
-def require_database() -> None:
-    if not DB_PATH.exists():
-        st.error("数据库不存在，请先运行：python -m src.jobs.init_db")
-        st.stop()
+def main() -> None:
+    ensure_platform_ready()
+    st.title("Quant Platform")
+    st.caption(f"{APP_VERSION} | 聚宽式本地量化研究与策略托管平台")
 
+    page_from_url = _get_query_page()
+    page = st.sidebar.radio("平台导航", PAGES, index=PAGES.index(page_from_url))
+    _set_query_page(page)
 
-def render_metric_cards() -> None:
-    nav = query(
-        """
-        SELECT strategy, date, nav, max_drawdown, gross_exposure
-        FROM portfolio_nav
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY strategy ORDER BY date DESC) = 1
-        ORDER BY strategy
-        """
-    )
-    signals = query(
-        """
-        SELECT strategy, COUNT(*) AS signal_rows, MAX(date) AS latest_signal_date
-        FROM signals_daily
-        GROUP BY strategy
-        ORDER BY strategy
-        """
-    )
-
-    cols = st.columns(4)
-    cols[0].metric("策略数量", len(nav))
-    cols[1].metric("信号策略", len(signals))
-    if not nav.empty:
-        cols[2].metric("最新净值均值", f"{nav['nav'].mean():,.2f}")
-        cols[3].metric("最深回撤", f"{nav['max_drawdown'].min():.2%}")
+    if page == "首页":
+        render_home()
+    elif page == "数据中心":
+        render_data_center()
+    elif page == "策略中心":
+        render_strategy_center()
+    elif page == "回测中心":
+        render_backtest_center()
+    elif page == "回测结果":
+        render_backtest_results()
+    elif page == "模拟交易":
+        render_paper_trading()
+    elif page == "风控中心":
+        render_risk_center()
+    elif page == "任务中心":
+        render_task_center()
     else:
-        cols[2].metric("最新净值均值", "-")
-        cols[3].metric("最深回撤", "-")
+        render_architecture()
 
 
-def render_system_map() -> None:
-    st.subheader("系统全景图")
-    st.write(
-        "这张图展示系统从原始数据到最终可视化的完整链路。你可以把它当成项目地图："
-        "左边是数据来源，中间是数据库、因子和策略，右边是回测、信号和面板。"
-    )
+def render_home() -> None:
+    st.subheader("平台总览")
+    c1, c2, c3, c4 = st.columns(4)
+    coverage = safe_df(lambda: DataPortal().price_coverage())
+    strategies = safe_df(list_strategies)
+    runs = safe_df(lambda: DataPortal().latest_runs(limit=100))
 
+    a_share_count = _coverage_value(coverage, "A-share constituents", "asset_count")
+    latest_price_date = _max_date(coverage, "end_date")
+    success_runs = 0 if runs.empty else int((runs["status"] == "success").sum())
+
+    c1.metric("策略数量", len(strategies))
+    c2.metric("A股股票数", f"{a_share_count:,.0f}")
+    c3.metric("最新行情日", latest_price_date or "-")
+    c4.metric("成功回测", success_runs)
+
+    st.markdown("### 用户主流程")
     st.graphviz_chart(
         """
         digraph {
-            graph [rankdir=LR, bgcolor="transparent", pad="0.2", nodesep="0.35", ranksep="0.55"];
+            graph [rankdir=LR, bgcolor="transparent", pad="0.2"];
             node [shape=box, style="rounded,filled", color="#CBD5E1", fillcolor="#F8FAFC", fontname="Microsoft YaHei", fontsize=11];
             edge [color="#64748B", arrowsize=0.8, fontname="Microsoft YaHei", fontsize=10];
-
-            a_data [label="A股数据\\n上证成分股 + 上证指数"];
-            c_data [label="Crypto数据\\nBTC/ETH 日线"];
-            db [label="DuckDB\\nprices_daily / features_daily / signals_daily / portfolio_nav", fillcolor="#EEF2FF"];
-            features [label="因子层\\n收益率 / 均线 / 波动率 / 相对强弱 / 市场宽度", fillcolor="#F0FDFA"];
-            risk [label="风险状态\\nrisk_on / neutral / risk_off", fillcolor="#FFF7ED"];
-            scoring [label="评分层\\nA_Share_Market_Score / Crypto_Score", fillcolor="#F0F9FF"];
-            portfolio [label="组合层\\n目标仓位 / 现金 / 风控标记", fillcolor="#FDF2F8"];
-            backtest [label="回测层\\n净值 / 回撤 / 暴露 / 指标", fillcolor="#ECFDF5"];
-            dashboard [label="Streamlit面板\\n流程 / 信号 / 宽度 / 净值 / 数据健康", fillcolor="#FAF5FF"];
-
-            a_data -> db;
-            c_data -> db;
-            db -> features;
-            features -> risk;
-            features -> scoring;
-            risk -> portfolio;
-            scoring -> portfolio;
-            portfolio -> backtest;
-            db -> dashboard;
-            features -> dashboard;
-            portfolio -> dashboard;
-            backtest -> dashboard;
+            data [label="数据中心\\n平台维护行情和质量"];
+            strategy [label="策略中心\\n选择模板和参数"];
+            backtest [label="回测中心\\n一键运行"];
+            result [label="回测结果\\n净值/回撤/订单/持仓"];
+            paper [label="模拟交易\\n每日目标仓位"];
+            risk [label="风控中心\\n解释风险和限制"];
+            data -> strategy -> backtest -> result -> paper -> risk;
         }
         """,
         width="stretch",
     )
 
+    st.info("当前 v1.0.0 是本地单用户平台版：方向已经固定为策略托管平台，后续会继续增强任务调度、多用户和实盘前风控。")
 
-def render_pipeline_status() -> None:
-    st.subheader("运行流程")
-    st.write("按从上到下的顺序运行。每一步右侧会根据当前 DuckDB 里的数据判断是否已经有结果。")
 
-    status = build_pipeline_status()
-    st.dataframe(status, width="stretch", hide_index=True)
+def render_data_center() -> None:
+    st.subheader("数据中心")
+    st.write("数据中心负责展示平台后端数据是否可用。用户写策略时不需要直接关心 AKShare、CCXT 或 DuckDB。")
+    coverage = safe_df(lambda: DataPortal().price_coverage())
+    if coverage.empty:
+        st.warning("还没有行情数据。请先运行数据采集任务。")
+    else:
+        st.dataframe(coverage, width="stretch", hide_index=True)
 
-    st.markdown("**推荐小样本验证命令**")
+    st.markdown("### 后台数据任务")
     st.code(
         "\n".join(
             [
@@ -116,347 +123,344 @@ def render_pipeline_status() -> None:
                 "python -m src.data_ingestion.a_share_market_prices --limit 50",
                 "python -m src.jobs.a_share_market_update",
                 "python -m src.jobs.a_share_breadth_update",
-                "python -m src.backtest.backtest_a_share_market",
-                "python -m src.data_ingestion.crypto_prices_ccxt",
-                "python -m src.jobs.crypto_update",
-                "python -m src.backtest.backtest_crypto",
-                "streamlit run src/dashboard/app.py",
             ]
         ),
         language="powershell",
     )
-
-    with st.expander("全量上证成分股运行说明"):
-        st.write(
-            "小样本通过后，把 `--limit 50` 去掉即可拉取上证指数全部成分股。"
-            "全量会访问 2000 多只股票，耗时较长，也更依赖 AKShare 数据源和网络稳定性。"
-        )
-        st.code("python -m src.data_ingestion.a_share_market_prices", language="powershell")
+    st.caption("小样本验证通过后，可以去掉 `--limit 50` 拉取完整上证成分股。")
 
 
-def build_pipeline_status() -> pd.DataFrame:
-    a_stock_pattern = "A_STOCK_%"
-    crypto_pattern = "CRYPTO_%"
-    a_stock_condition = "asset_id LIKE 'A_STOCK_%'"
-    crypto_condition = "asset_id LIKE 'CRYPTO_%'"
-    breadth_condition = "asset_id = 'A_MARKET_000001'"
-
-    checks = [
-        {
-            "步骤": "1. 初始化数据库",
-            "命令": "python -m src.jobs.init_db",
-            "状态": "完成" if _table_count("prices_daily") is not None else "待运行",
-            "结果": "DuckDB 表结构已存在" if DB_PATH.exists() else "未发现数据库文件",
-        },
-        {
-            "步骤": "2. 拉取上证成分股行情",
-            "命令": "python -m src.data_ingestion.a_share_market_prices --limit 50",
-            "状态": _ok_if(_count_assets(a_stock_pattern) > 0),
-            "结果": f"{_count_assets(a_stock_pattern)} 只股票，{_count_rows(a_stock_condition)} 行价格",
-        },
-        {
-            "步骤": "3. 计算上证成分股特征",
-            "命令": "python -m src.jobs.a_share_market_update",
-            "状态": _ok_if(_count_feature_assets(a_stock_pattern) > 0),
-            "结果": f"{_count_feature_assets(a_stock_pattern)} 只股票有特征",
-        },
-        {
-            "步骤": "4. 计算上证市场宽度",
-            "命令": "python -m src.jobs.a_share_breadth_update",
-            "状态": _ok_if(_count_rows(breadth_condition, table="features_daily") > 0),
-            "结果": f"{_count_rows(breadth_condition, table='features_daily')} 行宽度特征",
-        },
-        {
-            "步骤": "5. 回测上证成分股策略",
-            "命令": "python -m src.backtest.backtest_a_share_market",
-            "状态": _ok_if(_strategy_nav_rows(A_SHARE_STRATEGY) > 0),
-            "结果": f"{_strategy_nav_rows(A_SHARE_STRATEGY)} 行净值",
-        },
-        {
-            "步骤": "6. 拉取 Crypto 行情",
-            "命令": "python -m src.data_ingestion.crypto_prices_ccxt",
-            "状态": _ok_if(_count_assets(crypto_pattern) > 0),
-            "结果": f"{_count_assets(crypto_pattern)} 个币种，{_count_rows(crypto_condition)} 行价格",
-        },
-        {
-            "步骤": "7. 计算 Crypto 特征",
-            "命令": "python -m src.jobs.crypto_update",
-            "状态": _ok_if(_count_feature_assets(crypto_pattern) > 0),
-            "结果": f"{_count_feature_assets(crypto_pattern)} 个币种有特征",
-        },
-        {
-            "步骤": "8. 回测 Crypto 策略",
-            "命令": "python -m src.backtest.backtest_crypto",
-            "状态": _ok_if(_strategy_nav_rows(CRYPTO_STRATEGY) > 0),
-            "结果": f"{_strategy_nav_rows(CRYPTO_STRATEGY)} 行净值",
-        },
-    ]
-    return pd.DataFrame(checks)
-
-
-def render_strategy_explainer() -> None:
-    st.subheader("策略逻辑说明")
-    c1, c2 = st.columns(2)
-
-    with c1:
-        st.markdown("### 上证成分股策略")
-        st.write(
-            "股票池来自 `ak.index_stock_cons('000001')`，也就是上证指数成分股。"
-            "系统为每只股票计算动量、成交额、相对上证指数强弱、波动率和是否站上 120 日均线。"
-        )
-        st.markdown(
-            """
-            **当前选股逻辑**
-
-            - 每周五调仓。
-            - 只考虑站上 120 日均线的股票。
-            - 过滤成交额低于横截面中位数的股票。
-            - 按 `a_share_market_score` 排名。
-            - 默认最多选 30 只。
-            - 单只股票最大 3% 仓位。
-            - `risk_off` 时空仓。
-            """
-        )
-
-    with c2:
-        st.markdown("### Crypto 策略")
-        st.write(
-            "Crypto 第一版只使用现货 BTC/USDT 和 ETH/USDT，用 OKX 日线数据。"
-            "策略更偏风控验证，而不是追求最高收益。"
-        )
-        st.markdown(
-            """
-            **当前轮动逻辑**
-
-            - 每日生成信号。
-            - 根据 BTC 均线、动量和波动判断风险状态。
-            - `risk_off` 时保持现金。
-            - `neutral` 最大 30% Crypto 仓位。
-            - `risk_on` 最大 60% Crypto 仓位。
-            - BTC/ETH 单个最大 30%。
-            """
-        )
-
-    st.markdown("### 评分公式直观解释")
-    formula = pd.DataFrame(
-        [
-            ["价格动量", "近 7/20/60 日收益表现", "越强越靠前"],
-            ["成交额确认", "成交额在横截面中的相对水平", "越活跃越靠前"],
-            ["相对强弱", "相对基准的 20 日强弱", "跑赢基准加分"],
-            ["市场宽度", "上证成分股整体上涨和均线状态", "市场环境好时加分"],
-            ["风险惩罚", "波动率和跌破均线", "风险高则扣分"],
-        ],
-        columns=["因子", "含义", "作用"],
+def render_strategy_center() -> None:
+    st.subheader("策略中心")
+    st.write("策略现在是平台对象，不再只是一个 Python 文件。第一版内置“上证成分股动量轮动”模板。")
+    strategies = list_strategies()
+    st.dataframe(
+        strategies.drop(columns=["config_json"], errors="ignore"),
+        width="stretch",
+        hide_index=True,
     )
-    st.dataframe(formula, width="stretch", hide_index=True)
+
+    strategy_id = st.selectbox("查看策略配置", strategies["strategy_id"].tolist())
+    row = strategies.loc[strategies["strategy_id"] == strategy_id].iloc[0]
+    st.json(json.loads(row["config_json"]))
 
 
-def render_current_snapshot() -> None:
-    st.subheader("当前系统快照")
-    c1, c2 = st.columns(2)
-    with c1:
-        render_latest_signals()
-    with c2:
-        render_a_share_breadth()
+def render_backtest_center() -> None:
+    st.subheader("回测中心")
+    st.write("这里是 v1.0.0 最关键的入口：选择策略、配置参数、点击运行回测。")
+    strategies = list_strategies()
+    if strategies.empty:
+        st.warning("没有策略。请先进入策略中心初始化内置策略。")
+        return
+
+    start_default, end_default = _price_date_bounds()
+    with st.form("backtest_form"):
+        strategy_id = st.selectbox("策略", strategies["strategy_id"].tolist())
+        col1, col2, col3 = st.columns(3)
+        start_date = col1.date_input("开始日期", value=start_default)
+        end_date = col2.date_input("结束日期", value=end_default)
+        initial_cash = col3.number_input("初始资金", min_value=10_000.0, value=100_000.0, step=10_000.0)
+
+        col4, col5, col6 = st.columns(3)
+        top_n = col4.number_input("最大持仓数", min_value=1, max_value=100, value=30, step=1)
+        max_single = col5.number_input("单票最大仓位", min_value=0.005, max_value=0.20, value=0.03, step=0.005)
+        fee_rate = col6.number_input("交易费率", min_value=0.0, max_value=0.02, value=0.001, step=0.0005, format="%.4f")
+
+        submitted = st.form_submit_button("运行回测")
+
+    if submitted:
+        with st.spinner("正在运行回测，平台会保存净值、订单、成交和持仓..."):
+            try:
+                result = run_backtest(
+                    BacktestRequest(
+                        strategy_id=strategy_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        initial_cash=initial_cash,
+                        config_overrides={
+                            "top_n": int(top_n),
+                            "max_single_position": float(max_single),
+                            "fee_rate": float(fee_rate),
+                        },
+                    )
+                )
+                st.cache_data.clear()
+                st.success(f"回测完成：{result.run_id}")
+                render_metric_grid(result.metrics)
+            except Exception as exc:
+                st.error(f"回测失败：{exc}")
 
 
-def render_nav() -> None:
-    st.subheader("组合净值")
+def render_backtest_results() -> None:
+    st.subheader("回测结果")
+    runs = safe_df(lambda: DataPortal().latest_runs(limit=50))
+    if runs.empty:
+        st.info("还没有回测记录。请先在回测中心运行一次回测。")
+        return
+
+    st.dataframe(runs, width="stretch", hide_index=True)
+    success_runs = runs.loc[runs["status"] == "success"]
+    if success_runs.empty:
+        return
+
+    run_id = st.selectbox("选择回测记录", success_runs["run_id"].tolist())
     nav = query(
         """
-        SELECT date, strategy, nav, max_drawdown, gross_exposure
-        FROM portfolio_nav
-        ORDER BY date, strategy
-        """
+        SELECT date, nav, benchmark_nav, cash, gross_exposure, drawdown
+        FROM backtest_nav
+        WHERE run_id = ?
+        ORDER BY date
+        """,
+        (run_id,),
     )
-    if nav.empty:
-        st.info("暂无净值数据，请先运行回测命令。")
+    metrics = query(
+        """
+        SELECT metric_name, metric_value
+        FROM strategy_run_metrics
+        WHERE run_id = ?
+        ORDER BY metric_name
+        """,
+        (run_id,),
+    )
+    positions = query(
+        """
+        SELECT date, asset_id, quantity, close_price, market_value, weight
+        FROM positions_daily
+        WHERE run_id = ?
+        QUALIFY date = MAX(date) OVER ()
+        ORDER BY weight DESC
+        """,
+        (run_id,),
+    )
+    orders = query(
+        """
+        SELECT date, asset_id, side, quantity, price, notional, target_weight, reason
+        FROM orders
+        WHERE run_id = ?
+        ORDER BY date DESC, notional DESC
+        LIMIT 200
+        """,
+        (run_id,),
+    )
+
+    if not metrics.empty:
+        render_metric_grid(dict(zip(metrics["metric_name"], metrics["metric_value"])))
+
+    if not nav.empty:
+        plot_nav = nav[["date", "nav", "benchmark_nav"]].melt(
+            id_vars="date", var_name="series", value_name="value"
+        )
+        st.plotly_chart(px.line(plot_nav, x="date", y="value", color="series"), width="stretch")
+        c1, c2 = st.columns(2)
+        c1.plotly_chart(px.line(nav, x="date", y="drawdown"), width="stretch")
+        c2.plotly_chart(px.line(nav, x="date", y="gross_exposure"), width="stretch")
+
+    st.markdown("### 最新持仓")
+    st.dataframe(positions, width="stretch", hide_index=True)
+    st.markdown("### 最近订单")
+    st.dataframe(orders, width="stretch", hide_index=True)
+
+
+def render_paper_trading() -> None:
+    st.subheader("模拟交易")
+    st.write("v1.0.0 先展示最近一次策略信号，作为模拟交易目标仓位。后续会加入独立模拟账户和每日自动调度。")
+    strategies = list_strategies()
+    strategy_id = st.selectbox("策略", strategies["strategy_id"].tolist())
+    signals = DataPortal().latest_signals(strategy_id)
+    if signals.empty:
+        st.info("还没有信号。请先运行回测或策略任务。")
         return
-
-    fig = px.line(nav, x="date", y="nav", color="strategy", title=None)
-    st.plotly_chart(fig, width="stretch")
-
-    c1, c2 = st.columns(2)
-    drawdown_fig = px.line(nav, x="date", y="max_drawdown", color="strategy", title=None)
-    c1.plotly_chart(drawdown_fig, width="stretch")
-    exposure_fig = px.line(nav, x="date", y="gross_exposure", color="strategy", title=None)
-    c2.plotly_chart(exposure_fig, width="stretch")
-
-
-def render_latest_signals() -> None:
-    st.subheader("最新信号")
-    strategy = st.selectbox(
-        "策略",
-        [A_SHARE_STRATEGY, CRYPTO_STRATEGY],
-        index=0,
-    )
-    latest_date = query(
-        f"""
-        SELECT MAX(date) AS latest_date
-        FROM signals_daily
-        WHERE strategy = '{strategy}'
-        """
-    )["latest_date"].iloc[0]
-
-    if pd.isna(latest_date):
-        st.info("暂无信号数据。")
-        return
-
-    signals = query(
-        f"""
-        SELECT asset_id, date, strategy, score, signal, target_weight, risk_flag, reason
-        FROM signals_daily
-        WHERE strategy = '{strategy}'
-          AND date = DATE '{latest_date}'
-        ORDER BY target_weight DESC, score DESC NULLS LAST
-        """
-    )
-    st.caption(f"最新信号日期：{latest_date}")
     st.dataframe(signals, width="stretch", hide_index=True)
 
 
-def render_a_share_breadth() -> None:
-    st.subheader("上证成分股市场宽度")
-    breadth = query(
-        f"""
-        SELECT date, feature_name, value
-        FROM features_daily
-        WHERE asset_id = '{BREADTH_ASSET_ID}'
-          AND feature_name IN (
-            'up_ratio',
-            'down_ratio',
-            'above_ma_120_ratio',
-            'turnover_expansion',
-            'breadth_score',
-            'universe_count'
-          )
-        ORDER BY date, feature_name
+def render_risk_center() -> None:
+    st.subheader("风控中心")
+    st.write("风控中心把市场状态、仓位限制和交易限制集中展示。第一版先展示信号级风险标记。")
+    risk = safe_df(
+        lambda: query(
+            """
+            SELECT strategy, date, COUNT(*) AS signal_count,
+                   SUM(CASE WHEN risk_flag THEN 1 ELSE 0 END) AS risk_flag_count
+            FROM signals_daily
+            GROUP BY strategy, date
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY strategy ORDER BY date DESC) = 1
+            ORDER BY strategy
+            """
+        )
+    )
+    if risk.empty:
+        st.info("暂无风险数据。")
+    else:
+        st.dataframe(risk, width="stretch", hide_index=True)
+
+    events = safe_df(
+        lambda: query(
+            """
+            SELECT *
+            FROM risk_events
+            ORDER BY created_at DESC
+            LIMIT 100
+            """
+        )
+    )
+    st.markdown("### 风险事件")
+    st.dataframe(events, width="stretch", hide_index=True)
+
+
+def render_task_center() -> None:
+    st.subheader("任务中心")
+    st.write("任务中心用于承接未来的自动更新、自动回测、每日信号和日报。")
+    jobs = safe_df(
+        lambda: query(
+            """
+            SELECT *
+            FROM job_runs
+            ORDER BY started_at DESC
+            LIMIT 100
+            """
+        )
+    )
+    if jobs.empty:
+        st.info("暂无任务运行记录。当前阶段仍以手动触发为主，后续会接入 APScheduler。")
+    else:
+        st.dataframe(jobs, width="stretch", hide_index=True)
+
+    st.markdown("### 建议自动化顺序")
+    st.code(
+        "\n".join(
+            [
+                "每日收盘后：更新 A 股行情",
+                "行情完成后：计算特征和市场宽度",
+                "特征完成后：运行策略信号",
+                "信号完成后：更新模拟账户",
+                "最后：生成日报和风险检查",
+            ]
+        )
+    )
+
+
+def render_architecture() -> None:
+    st.subheader("技术架构")
+    st.graphviz_chart(
+        """
+        digraph {
+            graph [rankdir=LR, bgcolor="transparent", pad="0.2", nodesep="0.35", ranksep="0.55"];
+            node [shape=box, style="rounded,filled", color="#CBD5E1", fillcolor="#F8FAFC", fontname="Microsoft YaHei", fontsize=11];
+            edge [color="#64748B", arrowsize=0.8, fontname="Microsoft YaHei", fontsize=10];
+            ui [label="Streamlit 平台入口"];
+            service [label="Platform Service\\n策略/回测/风控"];
+            data_api [label="DataPortal\\n统一数据 API"];
+            engine [label="Backtest Engine\\n撮合/订单/持仓"];
+            db [label="DuckDB\\n行情/策略/回测结果"];
+            source [label="AKShare / CCXT\\n后端数据源"];
+            ui -> service;
+            service -> data_api;
+            service -> engine;
+            data_api -> db;
+            engine -> db;
+            source -> db;
+        }
+        """,
+        width="stretch",
+    )
+    st.markdown(
+        """
+        **v1.0.0 当前定位**
+
+        - 本地单用户平台版。
+        - 已建立策略对象、策略模板、统一数据 API、回测运行记录、订单、成交、持仓和结果页面。
+        - 下一步增强任务调度、模拟账户、多策略对比和 FastAPI/React 标准 Web 架构。
         """
     )
-    if breadth.empty:
-        st.info("暂无市场宽度数据，请先运行：python -m src.jobs.a_share_breadth_update")
+
+
+def render_metric_grid(metrics: dict[str, float]) -> None:
+    labels = [
+        ("total_return", "总收益"),
+        ("annual_return", "年化收益"),
+        ("annual_volatility", "年化波动"),
+        ("sharpe", "夏普"),
+        ("max_drawdown", "最大回撤"),
+        ("win_rate", "胜率"),
+        ("benchmark_total_return", "基准总收益"),
+        ("benchmark_max_drawdown", "基准最大回撤"),
+    ]
+    cols = st.columns(4)
+    for index, (key, label) in enumerate(labels):
+        value = metrics.get(key)
+        if value is None or pd.isna(value):
+            text = "-"
+        elif "return" in key or "volatility" in key or "drawdown" in key or key == "win_rate":
+            text = f"{value:.2%}"
+        else:
+            text = f"{value:.4f}"
+        cols[index % 4].metric(label, text)
+
+
+def safe_df(fn) -> pd.DataFrame:
+    try:
+        return fn()
+    except Exception:
+        return pd.DataFrame()
+
+
+def _coverage_value(coverage: pd.DataFrame, group: str, column: str) -> float:
+    if coverage.empty or column not in coverage.columns:
+        return 0.0
+    match = coverage.loc[coverage["asset_group"] == group, column]
+    if match.empty or pd.isna(match.iloc[0]):
+        return 0.0
+    return float(match.iloc[0])
+
+
+def _max_date(frame: pd.DataFrame, column: str) -> str | None:
+    if frame.empty or column not in frame.columns:
+        return None
+    value = frame[column].max()
+    if pd.isna(value):
+        return None
+    return str(value)
+
+
+def _price_date_bounds() -> tuple[date, date]:
+    fallback = date.today()
+    try:
+        bounds = query(
+            """
+            SELECT MIN(date) AS start_date, MAX(date) AS end_date
+            FROM prices_daily
+            WHERE asset_id LIKE 'A_STOCK_%'
+            """
+        )
+        start = _to_date(bounds["start_date"].iloc[0], fallback)
+        end = _to_date(bounds["end_date"].iloc[0], fallback)
+        return start, end
+    except Exception:
+        return fallback, fallback
+
+
+def _to_date(value, fallback: date) -> date:
+    if value is None or pd.isna(value):
+        return fallback
+    return pd.to_datetime(value).date()
+
+
+def _get_query_page() -> str:
+    try:
+        page = st.query_params.get("page", "首页")
+    except Exception:
+        return "首页"
+    if isinstance(page, list):
+        page = page[0] if page else "首页"
+    return page if page in PAGES else "首页"
+
+
+def _set_query_page(page: str) -> None:
+    try:
+        st.query_params["page"] = page
+    except Exception:
         return
 
-    wide = breadth.pivot(index="date", columns="feature_name", values="value").reset_index()
-    latest = wide.sort_values("date").iloc[-1]
 
-    cols = st.columns(4)
-    cols[0].metric("股票池数量", f"{latest.get('universe_count', 0):.0f}")
-    cols[1].metric("上涨比例", _fmt_pct(latest.get("up_ratio")))
-    cols[2].metric("120日线上方比例", _fmt_pct(latest.get("above_ma_120_ratio")))
-    cols[3].metric("宽度分数", f"{latest.get('breadth_score', float('nan')):.4f}")
-
-    plot_cols = [c for c in ["up_ratio", "above_ma_120_ratio", "breadth_score"] if c in wide.columns]
-    fig = px.line(wide, x="date", y=plot_cols, title=None)
-    st.plotly_chart(fig, width="stretch")
-
-
-def render_data_health() -> None:
-    st.subheader("数据覆盖")
-    coverage = query(
-        """
-        SELECT
-            CASE
-                WHEN asset_id LIKE 'A_STOCK_%' THEN 'A-share constituents'
-                WHEN asset_id = 'A_INDEX_000001' THEN 'Shanghai Composite'
-                WHEN asset_id LIKE 'CRYPTO_%' THEN 'Crypto'
-                ELSE 'Other'
-            END AS asset_group,
-            COUNT(DISTINCT asset_id) AS asset_count,
-            COUNT(*) AS row_count,
-            MIN(date) AS start_date,
-            MAX(date) AS end_date
-        FROM prices_daily
-        GROUP BY asset_group
-        ORDER BY asset_group
-        """
-    )
-    st.dataframe(coverage, width="stretch", hide_index=True)
-
-
-def _table_count(table: str) -> int | None:
-    try:
-        result = query(f"SELECT COUNT(*) AS n FROM {table}")
-        return int(result["n"].iloc[0])
-    except Exception:
-        return None
-
-
-def _count_assets(pattern: str) -> int:
-    result = query(
-        f"""
-        SELECT COUNT(DISTINCT asset_id) AS n
-        FROM prices_daily
-        WHERE asset_id LIKE '{pattern}'
-        """
-    )
-    return int(result["n"].iloc[0])
-
-
-def _count_feature_assets(pattern: str) -> int:
-    result = query(
-        f"""
-        SELECT COUNT(DISTINCT asset_id) AS n
-        FROM features_daily
-        WHERE asset_id LIKE '{pattern}'
-        """
-    )
-    return int(result["n"].iloc[0])
-
-
-def _count_rows(condition: str, table: str = "prices_daily") -> int:
-    result = query(f"SELECT COUNT(*) AS n FROM {table} WHERE {condition}")
-    return int(result["n"].iloc[0])
-
-
-def _strategy_nav_rows(strategy: str) -> int:
-    result = query(
-        f"""
-        SELECT COUNT(*) AS n
-        FROM portfolio_nav
-        WHERE strategy = '{strategy}'
-        """
-    )
-    return int(result["n"].iloc[0])
-
-
-def _ok_if(condition: bool) -> str:
-    return "完成" if condition else "待运行"
-
-
-def _fmt_pct(value) -> str:
-    if pd.isna(value):
-        return "-"
-    return f"{value:.2%}"
-
-
-require_database()
-render_metric_cards()
-
-tab_map, tab_flow, tab_explain, tab_snapshot, tab_nav, tab_signals, tab_breadth, tab_data = st.tabs(
-    ["系统地图", "运行流程", "策略解释", "当前快照", "净值", "信号", "市场宽度", "数据"]
-)
-
-with tab_map:
-    render_system_map()
-
-with tab_flow:
-    render_pipeline_status()
-
-with tab_explain:
-    render_strategy_explainer()
-
-with tab_snapshot:
-    render_current_snapshot()
-
-with tab_nav:
-    render_nav()
-
-with tab_signals:
-    render_latest_signals()
-
-with tab_breadth:
-    render_a_share_breadth()
-
-with tab_data:
-    render_data_health()
+if __name__ == "__main__":
+    main()

@@ -91,6 +91,120 @@ CREATE TABLE IF NOT EXISTS portfolio_nav (
     created_at TIMESTAMP,
     PRIMARY KEY(date, strategy)
 );
+
+CREATE TABLE IF NOT EXISTS strategies (
+    strategy_id TEXT PRIMARY KEY,
+    name TEXT,
+    description TEXT,
+    asset_class TEXT,
+    market TEXT,
+    template_id TEXT,
+    config_json TEXT,
+    status TEXT,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS strategy_runs (
+    run_id TEXT PRIMARY KEY,
+    strategy_id TEXT,
+    strategy_name TEXT,
+    run_type TEXT,
+    status TEXT,
+    start_date DATE,
+    end_date DATE,
+    initial_cash DOUBLE,
+    config_json TEXT,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    error_message TEXT
+);
+
+CREATE TABLE IF NOT EXISTS strategy_run_metrics (
+    run_id TEXT,
+    metric_name TEXT,
+    metric_value DOUBLE,
+    created_at TIMESTAMP,
+    PRIMARY KEY(run_id, metric_name)
+);
+
+CREATE TABLE IF NOT EXISTS backtest_nav (
+    run_id TEXT,
+    date DATE,
+    strategy_id TEXT,
+    nav DOUBLE,
+    cash DOUBLE,
+    gross_exposure DOUBLE,
+    drawdown DOUBLE,
+    benchmark_nav DOUBLE,
+    created_at TIMESTAMP,
+    PRIMARY KEY(run_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS positions_daily (
+    run_id TEXT,
+    date DATE,
+    strategy_id TEXT,
+    asset_id TEXT,
+    quantity DOUBLE,
+    close_price DOUBLE,
+    market_value DOUBLE,
+    weight DOUBLE,
+    created_at TIMESTAMP,
+    PRIMARY KEY(run_id, date, asset_id)
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+    order_id TEXT PRIMARY KEY,
+    run_id TEXT,
+    strategy_id TEXT,
+    date DATE,
+    asset_id TEXT,
+    side TEXT,
+    quantity DOUBLE,
+    price DOUBLE,
+    notional DOUBLE,
+    target_weight DOUBLE,
+    reason TEXT,
+    status TEXT,
+    created_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS trades (
+    trade_id TEXT PRIMARY KEY,
+    order_id TEXT,
+    run_id TEXT,
+    strategy_id TEXT,
+    date DATE,
+    asset_id TEXT,
+    side TEXT,
+    quantity DOUBLE,
+    price DOUBLE,
+    notional DOUBLE,
+    fee DOUBLE,
+    created_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS risk_events (
+    event_id TEXT PRIMARY KEY,
+    run_id TEXT,
+    strategy_id TEXT,
+    date DATE,
+    severity TEXT,
+    rule_name TEXT,
+    message TEXT,
+    created_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS job_runs (
+    job_run_id TEXT PRIMARY KEY,
+    job_name TEXT,
+    status TEXT,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    duration_seconds DOUBLE,
+    message TEXT
+);
 """
 
 

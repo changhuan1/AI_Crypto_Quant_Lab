@@ -1,84 +1,120 @@
-# A-Share Crypto Quant Lab
+# Quant Platform
 
-A-Share Crypto Quant Lab is a research-first quantitative lab for A-share broad-market and crypto-spot analysis.
+Quant Platform is a local quant research and strategy-hosting platform inspired by JoinQuant.
 
-The v0.1 goal is to build a low-cost, explainable loop:
+The project direction is now fixed:
 
-```text
-data ingestion -> features -> scoring -> backtest -> paper trading -> risk control -> dashboard/report
-```
+- Users should interact with strategies through a web platform.
+- Data ingestion, cleaning, feature calculation, backtesting, ledger generation, and risk checks belong to the platform backend.
+- Strategy users should not need to read database tables or run many scripts by hand.
+- The first supported market is Shanghai Composite constituents, with crypto kept as an extension area.
 
-## Scope
+## Version
 
-v0.1 focuses on project scaffolding, reproducible configuration, and a clear implementation roadmap.
+Current version: `v1.0.0`
 
-This repository does not start with production trading code. Strategy, data, and execution modules should be implemented step by step after the framework is reviewed.
+This is a local single-user platform release. It is not yet a commercial multi-user production system, but the core direction and architecture are now platform-based rather than script-based.
 
-## Boundaries
+## What v1.0.0 Includes
 
-- No leverage.
-- No futures, options, or perpetual contracts.
-- No high-frequency trading.
-- No automatic live trading.
-- No LLM-driven order placement.
-- No small-cap meme coins or unclear assets.
-- Every signal must be explainable.
-- Every strategy must pass backtesting and paper trading before any real-money validation.
+- Platform core package: `src/platform`
+- Strategy object and strategy template registry
+- Built-in strategy: Shanghai Composite constituent momentum rotation
+- Unified data access layer: `DataPortal`
+- One-click backtest service
+- Backtest run records
+- Backtest NAV table
+- Daily positions
+- Orders
+- Trades
+- Strategy metrics
+- Streamlit platform UI
 
-## Project Layout
+The Streamlit app now includes:
 
-```text
-configs/       YAML configuration for assets, data sources, strategies, and risk rules
-data/          Local raw data, processed data, reports, and DuckDB files
-docs/          Product and technical planning documents
-src/           Future Python package modules
-notebooks/     Research notebooks
-tests/         Future test suite
-external/      Optional external tools such as Freqtrade
-```
+- Home
+- Data Center
+- Strategy Center
+- Backtest Center
+- Backtest Results
+- Paper Trading
+- Risk Center
+- Task Center
+- Technical Architecture
 
-## First Milestone
-
-The first implementation milestone should make these commands possible:
+## Quick Start
 
 ```powershell
 conda activate ai_crypto_quant_lab
 python -m src.jobs.init_db
-python -m src.data_ingestion.crypto_prices_ccxt
-python -m src.jobs.crypto_update
-python -m src.backtest.backtest_crypto
-python -m src.data_ingestion.a_share_market_prices --limit 50
-python -m src.jobs.a_share_market_update
-python -m src.jobs.a_share_breadth_update
-python -m src.backtest.backtest_a_share_market
 streamlit run src/dashboard/app.py
 ```
 
-Current status:
+Open the local URL shown by Streamlit.
 
-- `src.jobs.init_db` initializes the local DuckDB database.
-- `src.data_ingestion.crypto_prices_ccxt` collects BTC/USDT and ETH/USDT daily OHLCV data through CCXT. The default exchange is OKX because Binance may rate-limit or block some IPs.
-- `src.jobs.crypto_update` calculates first-pass crypto price features and prints the BTC risk regime.
-- `src.backtest.backtest_crypto` generates daily crypto rotation signals, runs a simple rebalance backtest, and compares it with BTC buy-and-hold.
-- `src.data_ingestion.a_share_market_prices` collects Shanghai Composite constituents through AKShare. Use `--limit 50` for a small smoke test, or omit it for the full constituent universe.
-- `src.jobs.a_share_market_update` calculates first-pass constituent-level price features and prints the A-share market risk regime.
-- `src.jobs.a_share_breadth_update` calculates Shanghai Composite constituent breadth, including up/down ratio, above-MA120 ratio, turnover expansion, and a market breadth score.
-- `src.backtest.backtest_a_share_market` generates weekly Shanghai Composite constituent stock-selection signals and compares them with the Shanghai Composite index.
-- `src.dashboard.app` provides a local Streamlit dashboard for NAV, signals, breadth, and data coverage.
+## Prepare A-Share Data
 
-Full Shanghai Composite constituent ingestion can take a long time because it may fetch more than 2,000 stocks. Start with a smoke test, then run the full ingestion when the data source/network is stable:
+For a quick smoke test:
 
 ```powershell
 python -m src.data_ingestion.a_share_market_prices --limit 50
-python -m src.data_ingestion.a_share_market_prices
+python -m src.jobs.a_share_market_update
+python -m src.jobs.a_share_breadth_update
 ```
 
-The A-share stock data collector uses Eastmoney first and falls back to Sina when Eastmoney is blocked or unstable.
+For the full Shanghai Composite constituent universe:
 
-The Streamlit dashboard is still reserved for a later milestone.
+```powershell
+python -m src.data_ingestion.a_share_market_prices
+python -m src.jobs.a_share_market_update
+python -m src.jobs.a_share_breadth_update
+```
 
-If DuckDB reports that `data/db/quant_lab.duckdb` is already in use, close any editor tab or database plugin that has opened the file, then rerun the command.
+Full ingestion can take a long time because the Shanghai Composite has many constituents and the data source can be unstable.
+
+## Main User Flow
+
+```text
+Open platform
+  -> Data Center: confirm data coverage
+  -> Strategy Center: inspect strategy template
+  -> Backtest Center: configure and run backtest
+  -> Backtest Results: inspect NAV, drawdown, holdings, orders, trades
+  -> Paper Trading: inspect latest target weights
+  -> Risk Center: inspect risk flags
+```
+
+## Project Layout
+
+```text
+configs/       YAML configuration for data sources, strategies, and risk rules
+data/          Local raw data, reports, and DuckDB files
+docs/          Product, platform, and roadmap documents
+src/platform/  Platform core: strategy objects, data API, backtest service
+src/dashboard/ Streamlit web platform
+src/jobs/      Backend maintenance jobs
+src/features/  Feature calculation
+src/strategies/Strategy scoring and target generation logic
+src/backtest/  Legacy and reusable backtest utilities
+tests/         Test suite
+```
+
+## Current Boundaries
+
+v1.0.0 does not include:
+
+- Real-money live trading
+- Broker API integration
+- Multi-user login
+- Strategy code sandboxing
+- Distributed task queues
+- High-frequency trading
+- Futures, options, or leveraged derivatives
+
+These are planned for later versions after the local single-user platform is stable.
 
 ## Documentation
 
-See [docs/A_SHARE_MARKET_PLAN.md](docs/A_SHARE_MARKET_PLAN.md) for the updated A-share market implementation plan. The original AI-market plan is kept in `docs/` as historical context.
+- [Platform Requirements](docs/QUANT_PLATFORM_REQUIREMENTS.md)
+- [Research Roadmap](docs/QUANT_PLATFORM_RESEARCH_ROADMAP.md)
+- [A-Share Market Plan](docs/A_SHARE_MARKET_PLAN.md)
