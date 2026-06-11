@@ -205,6 +205,102 @@ CREATE TABLE IF NOT EXISTS job_runs (
     duration_seconds DOUBLE,
     message TEXT
 );
+
+CREATE TABLE IF NOT EXISTS trading_calendar (
+    market TEXT,
+    date DATE,
+    is_open BOOLEAN,
+    previous_open_date DATE,
+    next_open_date DATE,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(market, date)
+);
+
+CREATE TABLE IF NOT EXISTS index_constituents_history (
+    index_id TEXT,
+    date DATE,
+    asset_id TEXT,
+    weight DOUBLE,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(index_id, date, asset_id)
+);
+
+CREATE TABLE IF NOT EXISTS asset_status_daily (
+    asset_id TEXT,
+    date DATE,
+    is_tradable BOOLEAN,
+    is_suspended BOOLEAN,
+    is_st BOOLEAN,
+    is_limit_up BOOLEAN,
+    is_limit_down BOOLEAN,
+    up_limit DOUBLE,
+    down_limit DOUBLE,
+    listed_days INTEGER,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(asset_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS corporate_actions (
+    asset_id TEXT,
+    ex_date DATE,
+    action_type TEXT,
+    cash_dividend DOUBLE,
+    split_ratio DOUBLE,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(asset_id, ex_date, action_type)
+);
+
+CREATE TABLE IF NOT EXISTS data_quality_reports (
+    report_id TEXT PRIMARY KEY,
+    check_name TEXT,
+    severity TEXT,
+    asset_group TEXT,
+    asset_id TEXT,
+    date DATE,
+    metric_name TEXT,
+    metric_value DOUBLE,
+    message TEXT,
+    created_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS factor_ic_daily (
+    factor_name TEXT,
+    horizon INTEGER,
+    date DATE,
+    ic DOUBLE,
+    rank_ic DOUBLE,
+    asset_count INTEGER,
+    created_at TIMESTAMP,
+    PRIMARY KEY(factor_name, horizon, date)
+);
+
+CREATE TABLE IF NOT EXISTS factor_quantile_returns (
+    factor_name TEXT,
+    horizon INTEGER,
+    date DATE,
+    quantile INTEGER,
+    mean_forward_return DOUBLE,
+    asset_count INTEGER,
+    created_at TIMESTAMP,
+    PRIMARY KEY(factor_name, horizon, date, quantile)
+);
+
+CREATE TABLE IF NOT EXISTS research_experiments (
+    experiment_id TEXT PRIMARY KEY,
+    strategy_id TEXT,
+    run_id TEXT,
+    sample_type TEXT,
+    start_date DATE,
+    end_date DATE,
+    config_json TEXT,
+    data_assumption TEXT,
+    notes TEXT,
+    created_at TIMESTAMP
+);
 """
 
 

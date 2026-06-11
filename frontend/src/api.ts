@@ -2,6 +2,8 @@ import type {
   BacktestPayload,
   BacktestResponse,
   CoverageRow,
+  DataQualityRow,
+  FactorIcRow,
   MetricRow,
   NavRow,
   OrderRow,
@@ -26,6 +28,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   overview: () => request<Overview>("/api/overview"),
   coverage: () => request<CoverageRow[]>("/api/data/coverage"),
+  dataQuality: () => request<DataQualityRow[]>("/api/data/quality?refresh=true"),
+  factorIc: () => request<FactorIcRow[]>("/api/research/factor-ic"),
   strategies: () => request<StrategyRow[]>("/api/strategies"),
   runs: () => request<RunRow[]>("/api/runs"),
   metrics: (runId: string) => request<MetricRow[]>(`/api/runs/${runId}/metrics`),

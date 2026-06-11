@@ -37,6 +37,10 @@ def run_backtest(request: BacktestRequest, db_path: Path = DB_PATH) -> BacktestR
             start_date=request.start_date.isoformat() if request.start_date else None,
             end_date=request.end_date.isoformat() if request.end_date else None,
         )
+        asset_status = data.load_asset_status(
+            start_date=request.start_date.isoformat() if request.start_date else None,
+            end_date=request.end_date.isoformat() if request.end_date else None,
+        )
         if prices.empty:
             raise RuntimeError(
                 "没有找到 A 股价格数据。请先运行数据更新，或在数据中心确认 prices_daily 已有 A_STOCK 数据。"
@@ -55,6 +59,8 @@ def run_backtest(request: BacktestRequest, db_path: Path = DB_PATH) -> BacktestR
             strategy_id=strategy.strategy_id,
             initial_cash=request.initial_cash,
             fee_rate=float(config.get("fee_rate", 0.001)),
+            asset_status=asset_status,
+            execution_delay_days=int(config.get("execution_delay_days", 1)),
         )
 
         benchmark_nav = _run_benchmark(
@@ -64,6 +70,7 @@ def run_backtest(request: BacktestRequest, db_path: Path = DB_PATH) -> BacktestR
             initial_cash=request.initial_cash,
             fee_rate=float(config.get("fee_rate", 0.001)),
             benchmark_asset_id=str(config.get("benchmark_asset_id", "A_INDEX_000001")),
+            asset_status=asset_status,
         )
         nav = _attach_benchmark(ledger.nav, benchmark_nav)
         metrics = calculate_metrics(nav, periods_per_year=252)
@@ -214,28 +221,21 @@ def _run_benchmark(
     initial_cash: float,
     fee_rate: float,
     benchmark_asset_id: str,
+    asset_status: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    first_date = prices.loc[prices["asset_id"] == benchmark_asset_id, "date"].min()
-    if pd.isna(first_date):
+    benchmark = prices.loc[prices["asset_id"] == benchmark_asset_id].sort_values("date").copy()
+    benchmark = benchmark.dropna(subset=["close"])
+    if benchmark.empty:
         return pd.DataFrame()
-    signals = pd.DataFrame(
-        [
-            {
-                "asset_id": benchmark_asset_id,
-                "date": first_date,
-                "target_weight": 1.0,
-                "reason": "benchmark buy and hold",
-            }
-        ]
-    )
-    return backtest_target_weights(
-        prices=prices,
-        signals=signals,
-        run_id=f"{run_id}_benchmark",
-        strategy_id=strategy_id,
-        initial_cash=initial_cash,
-        fee_rate=fee_rate,
-    ).nav
+    benchmark["date"] = pd.to_datetime(benchmark["date"]).dt.date
+    first_close = benchmark["close"].iloc[0]
+    benchmark["nav"] = benchmark["close"] / first_close * initial_cash
+    benchmark["cash"] = 0.0
+    benchmark["gross_exposure"] = 1.0
+    benchmark["return"] = benchmark["nav"].pct_change().fillna(0.0)
+    benchmark["cummax"] = benchmark["nav"].cummax()
+    benchmark["drawdown"] = benchmark["nav"] / benchmark["cummax"] - 1
+    return benchmark[["date", "nav", "cash", "gross_exposure", "return", "cummax", "drawdown"]]
 
 
 def _attach_benchmark(nav: pd.DataFrame, benchmark_nav: pd.DataFrame) -> pd.DataFrame:
@@ -407,4 +407,3 @@ def _save_table(db_path: Path, table: str, rows: pd.DataFrame) -> None:
     with duckdb.connect(str(db_path)) as con:
         con.register("rows_to_save", rows)
         con.execute(f"INSERT OR REPLACE INTO {table} SELECT * FROM rows_to_save")
-

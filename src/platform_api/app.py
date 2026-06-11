@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 from src.jobs.init_db import DB_PATH
 from src.platform.backtest_service import run_backtest
 from src.platform.data_api import DataPortal
+from src.platform.data_quality import latest_data_quality_report, refresh_data_quality_report
+from src.platform.factor_research import latest_factor_ic_summary
 from src.platform.models import BacktestRequest
 from src.platform.repository import ensure_platform_ready, list_strategies
 
@@ -88,10 +90,27 @@ def data_coverage() -> list[dict[str, Any]]:
     return _records(DataPortal().price_coverage())
 
 
+@app.get("/api/data/quality")
+def data_quality(refresh: bool = False) -> list[dict[str, Any]]:
+    ensure_platform_ready()
+    if refresh:
+        return _records(refresh_data_quality_report())
+    report = latest_data_quality_report()
+    if report.empty:
+        report = refresh_data_quality_report()
+    return _records(report)
+
+
 @app.get("/api/strategies")
 def strategies() -> list[dict[str, Any]]:
     ensure_platform_ready()
     return _records(list_strategies())
+
+
+@app.get("/api/research/factor-ic")
+def factor_ic_summary() -> list[dict[str, Any]]:
+    ensure_platform_ready()
+    return _records(latest_factor_ic_summary())
 
 
 @app.get("/api/runs")
@@ -152,7 +171,7 @@ def run_orders(run_id: str, limit: int = 200) -> list[dict[str, Any]]:
     return _records(
         _query(
             """
-            SELECT date, asset_id, side, quantity, price, notional, target_weight, reason
+            SELECT date, asset_id, side, status, quantity, price, notional, target_weight, reason
             FROM orders
             WHERE run_id = ?
             ORDER BY date DESC, notional DESC

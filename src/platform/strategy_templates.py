@@ -14,6 +14,7 @@ DEFAULT_A_SHARE_MOMENTUM_CONFIG: dict[str, Any] = {
     "universe": "000001.SH",
     "benchmark_asset_id": "A_INDEX_000001",
     "rebalance_frequency": "weekly_friday",
+    "execution_delay_days": 1,
     "top_n": 30,
     "max_single_position": 0.03,
     "neutral_max_exposure": 0.50,
@@ -62,4 +63,3 @@ def merge_config(base: dict[str, Any], overrides: dict[str, Any] | None = None) 
             if value is not None:
                 result[key] = value
     return result
-

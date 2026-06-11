@@ -30,6 +30,9 @@ This is a local single-user platform release. It is not yet a commercial multi-u
 - Strategy metrics
 - FastAPI platform API
 - React/Vite platform frontend
+- A-share trading-rule aware ledger backtest
+- Data quality reports
+- Factor IC and quantile return research
 
 The React frontend now includes:
 
@@ -74,6 +77,8 @@ For a quick smoke test:
 python -m src.data_ingestion.a_share_market_prices --limit 50
 python -m src.jobs.a_share_market_update
 python -m src.jobs.a_share_breadth_update
+python -m src.jobs.data_quality_update
+python -m src.jobs.factor_research_update
 ```
 
 For the full Shanghai Composite constituent universe:
@@ -85,6 +90,29 @@ python -m src.jobs.a_share_breadth_update
 ```
 
 Full ingestion can take a long time because the Shanghai Composite has many constituents and the data source can be unstable.
+
+## Quant Core Checks
+
+The platform now includes the first professional quant-core checks:
+
+- Signal date and execution date are separated.
+- A-share backtests default to next trading day execution.
+- Buy quantities are rounded to 100-share lots.
+- Buy orders are constrained by available cash.
+- Sell orders, fees, and rejected orders are recorded in the order ledger.
+- Data quality reports flag missing asset status and missing historical index constituents.
+- Factor research calculates IC, Rank IC, and quantile forward returns.
+
+Run:
+
+```powershell
+python -m src.jobs.data_quality_update
+python -m src.jobs.factor_research_update
+```
+
+Important current limitation:
+
+The project still needs a reliable data source for historical index constituents, ST flags, suspension status, limit-up/limit-down prices, and corporate actions. Until that data is connected, A-share backtests are more conservative than before, but still carry data-quality warnings.
 
 ## Main User Flow
 

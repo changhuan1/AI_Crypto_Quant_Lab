@@ -119,3 +119,26 @@ class DataPortal:
                 """,
                 [limit],
             ).df()
+
+    def load_asset_status(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> pd.DataFrame:
+        conditions = []
+        params = []
+        if start_date:
+            conditions.append("date >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("date <= ?")
+            params.append(end_date)
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        sql = f"""
+            SELECT *
+            FROM asset_status_daily
+            {where_clause}
+            ORDER BY asset_id, date
+        """
+        with duckdb.connect(str(self.db_path)) as con:
+            return con.execute(sql, params).df()

@@ -221,6 +221,36 @@ h1 {
   border-color: #eed3a2;
 }
 
+.severity {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.severity.error {
+  color: #7a271a;
+  background: #ffebe7;
+}
+
+.severity.warning {
+  color: #7a4b09;
+  background: #fff4df;
+}
+
+.severity.pass {
+  color: #0f5d4a;
+  background: #e7f4ef;
+}
+
+.severity.info {
+  color: #475467;
+  background: #eef1f0;
+}
+
 .tag {
   color: #454f5b;
   background: #eef1f0;

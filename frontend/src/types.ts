@@ -15,6 +15,30 @@ export type CoverageRow = {
   end_date: string | null;
 };
 
+export type DataQualityRow = {
+  report_id: string;
+  check_name: string;
+  severity: "error" | "warning" | "pass" | "info";
+  asset_group: string;
+  asset_id: string | null;
+  date: string | null;
+  metric_name: string;
+  metric_value: number;
+  message: string;
+  created_at: string;
+};
+
+export type FactorIcRow = {
+  factor_name: string;
+  horizon: number;
+  ic_mean: number;
+  rank_ic_mean: number;
+  ic_win_rate: number;
+  rank_ic_win_rate: number;
+  observations: number;
+  avg_asset_count: number;
+};
+
 export type StrategyRow = {
   strategy_id: string;
   name: string;
@@ -69,6 +93,7 @@ export type OrderRow = {
   date: string;
   asset_id: string;
   side: "BUY" | "SELL";
+  status: "filled" | "rejected";
   quantity: number;
   price: number;
   notional: number;

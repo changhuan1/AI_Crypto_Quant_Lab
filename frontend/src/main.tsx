@@ -31,6 +31,8 @@ import { api } from "./api";
 import type {
   BacktestPayload,
   CoverageRow,
+  DataQualityRow,
+  FactorIcRow,
   MetricRow,
   NavRow,
   OrderRow,
@@ -56,6 +58,8 @@ function App() {
   const [page, setPage] = useState<Page>("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
+  const [dataQuality, setDataQuality] = useState<DataQualityRow[]>([]);
+  const [factorIc, setFactorIc] = useState<FactorIcRow[]>([]);
   const [strategies, setStrategies] = useState<StrategyRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>("");
@@ -76,14 +80,18 @@ function App() {
     setLoading(true);
     setApiError("");
     try {
-      const [overviewData, coverageData, strategiesData, runsData] = await Promise.all([
+      const [overviewData, coverageData, qualityData, factorIcData, strategiesData, runsData] = await Promise.all([
         api.overview(),
         api.coverage(),
+        api.dataQuality(),
+        api.factorIc(),
         api.strategies(),
         api.runs()
       ]);
       setOverview(overviewData);
       setCoverage(coverageData);
+      setDataQuality(qualityData);
+      setFactorIc(factorIcData);
       setStrategies(strategiesData);
       setRuns(runsData);
       const firstRun = runsData.find((run) => run.status === "success");
@@ -198,8 +206,8 @@ function App() {
         {page === "overview" && (
           <OverviewPage overview={overview} nav={nav} runs={runs} metricMap={metricMap} />
         )}
-        {page === "data" && <DataPage coverage={coverage} />}
-        {page === "strategies" && <StrategyPage strategies={strategies} />}
+        {page === "data" && <DataPage coverage={coverage} dataQuality={dataQuality} />}
+        {page === "strategies" && <StrategyPage strategies={strategies} factorIc={factorIc} />}
         {page === "backtest" && (
           <BacktestPage
             strategies={strategies}
@@ -274,7 +282,13 @@ function OverviewPage({
   );
 }
 
-function DataPage({ coverage }: { coverage: CoverageRow[] }) {
+function DataPage({
+  coverage,
+  dataQuality
+}: {
+  coverage: CoverageRow[];
+  dataQuality: DataQualityRow[];
+}) {
   return (
     <section className="page-grid single">
       <div className="panel">
@@ -290,18 +304,41 @@ function DataPage({ coverage }: { coverage: CoverageRow[] }) {
           ])}
         />
       </div>
+      <div className="panel">
+        <PanelHeader title="数据质量与可信度" action={`${dataQuality.length} 项`} />
+        <DataTable
+          columns={["等级", "检查项", "资产组", "指标", "说明"]}
+          rows={dataQuality.map((row) => [
+            <span className={`severity ${row.severity}`} key={`${row.report_id}-severity`}>
+              {row.severity}
+            </span>,
+            row.check_name,
+            row.asset_group,
+            `${row.metric_name}: ${formatNumber(row.metric_value)}`,
+            row.message
+          ])}
+        />
+      </div>
       <div className="command-panel">
         <strong>后台数据准备</strong>
         <code>python -m src.jobs.init_db</code>
         <code>python -m src.data_ingestion.a_share_market_prices --limit 50</code>
         <code>python -m src.jobs.a_share_market_update</code>
         <code>python -m src.jobs.a_share_breadth_update</code>
+        <code>python -m src.jobs.data_quality_update</code>
+        <code>python -m src.jobs.factor_research_update</code>
       </div>
     </section>
   );
 }
 
-function StrategyPage({ strategies }: { strategies: StrategyRow[] }) {
+function StrategyPage({
+  strategies,
+  factorIc
+}: {
+  strategies: StrategyRow[];
+  factorIc: FactorIcRow[];
+}) {
   return (
     <section className="page-grid single">
       <div className="strategy-grid">
@@ -325,6 +362,20 @@ function StrategyPage({ strategies }: { strategies: StrategyRow[] }) {
             </div>
           </article>
         ))}
+      </div>
+      <div className="panel">
+        <PanelHeader title="因子 IC 摘要" action={`${factorIc.length} 项`} />
+        <DataTable
+          columns={["因子", "周期", "IC均值", "Rank IC均值", "IC胜率", "样本期数"]}
+          rows={factorIc.map((row) => [
+            row.factor_name,
+            `${row.horizon}日`,
+            formatNumber(row.ic_mean),
+            formatNumber(row.rank_ic_mean),
+            formatPct(row.ic_win_rate),
+            row.observations
+          ])}
+        />
       </div>
     </section>
   );
@@ -523,9 +574,10 @@ function ResultsPage({
         <div className="panel">
           <PanelHeader title="最近订单" action={`${orders.length} 条`} />
           <DataTable
-            columns={["日期", "方向", "资产", "金额", "目标仓位", "原因"]}
+            columns={["日期", "状态", "方向", "资产", "金额", "目标仓位", "原因"]}
             rows={orders.slice(0, 12).map((row) => [
               cleanDate(row.date),
+              row.status,
               row.side,
               row.asset_id,
               formatMoney(row.notional),
