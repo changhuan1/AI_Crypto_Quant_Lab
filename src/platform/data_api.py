@@ -15,7 +15,7 @@ class DataPortal:
         self.db_path = db_path
 
     def price_coverage(self) -> pd.DataFrame:
-        with duckdb.connect(str(self.db_path), read_only=True) as con:
+        with duckdb.connect(str(self.db_path)) as con:
             return con.execute(
                 """
                 SELECT
@@ -59,7 +59,7 @@ class DataPortal:
             {where_clause}
             ORDER BY asset_id, date
         """
-        with duckdb.connect(str(self.db_path), read_only=True) as con:
+        with duckdb.connect(str(self.db_path)) as con:
             return con.execute(sql, params).df()
 
     def load_a_share_market_prices(
@@ -74,7 +74,7 @@ class DataPortal:
         )
 
     def latest_signals(self, strategy_id: str) -> pd.DataFrame:
-        with duckdb.connect(str(self.db_path), read_only=True) as con:
+        with duckdb.connect(str(self.db_path)) as con:
             latest = con.execute(
                 """
                 SELECT MAX(date)
@@ -98,7 +98,7 @@ class DataPortal:
             ).df()
 
     def latest_runs(self, limit: int = 20) -> pd.DataFrame:
-        with duckdb.connect(str(self.db_path), read_only=True) as con:
+        with duckdb.connect(str(self.db_path)) as con:
             return con.execute(
                 """
                 SELECT
@@ -119,4 +119,3 @@ class DataPortal:
                 """,
                 [limit],
             ).df()
-

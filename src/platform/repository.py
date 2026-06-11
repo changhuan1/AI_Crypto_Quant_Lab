@@ -60,7 +60,7 @@ def seed_default_strategies(db_path: Path = DB_PATH) -> None:
 
 def list_strategies(db_path: Path = DB_PATH) -> pd.DataFrame:
     ensure_platform_ready(db_path)
-    with duckdb.connect(str(db_path), read_only=True) as con:
+    with duckdb.connect(str(db_path)) as con:
         return con.execute(
             """
             SELECT
@@ -82,7 +82,7 @@ def list_strategies(db_path: Path = DB_PATH) -> pd.DataFrame:
 
 def get_strategy(strategy_id: str, db_path: Path = DB_PATH) -> Strategy:
     ensure_platform_ready(db_path)
-    with duckdb.connect(str(db_path), read_only=True) as con:
+    with duckdb.connect(str(db_path)) as con:
         row = con.execute(
             """
             SELECT *
@@ -158,4 +158,3 @@ def save_strategy(strategy: Strategy, db_path: Path = DB_PATH) -> None:
             FROM strategy_row
             """
         )
-

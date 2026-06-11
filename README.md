@@ -28,29 +28,43 @@ This is a local single-user platform release. It is not yet a commercial multi-u
 - Orders
 - Trades
 - Strategy metrics
-- Streamlit platform UI
+- FastAPI platform API
+- React/Vite platform frontend
 
-The Streamlit app now includes:
+The React frontend now includes:
 
-- Home
+- Overview
 - Data Center
 - Strategy Center
-- Backtest Center
-- Backtest Results
-- Paper Trading
-- Risk Center
-- Task Center
-- Technical Architecture
+- Backtest Workbench
+- Performance Analysis
+- Risk and Paper Trading
 
 ## Quick Start
+
+Start the Python API:
 
 ```powershell
 conda activate ai_crypto_quant_lab
 python -m src.jobs.init_db
-streamlit run src/dashboard/app.py
+python -m uvicorn src.platform_api.app:app --host 127.0.0.1 --port 8000
 ```
 
-Open the local URL shown by Streamlit.
+Start the React frontend in another terminal:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173
+```
+
+The old Streamlit dashboard is still kept as a legacy prototype, but the main frontend direction is now React + FastAPI.
 
 ## Prepare A-Share Data
 
@@ -91,7 +105,9 @@ configs/       YAML configuration for data sources, strategies, and risk rules
 data/          Local raw data, reports, and DuckDB files
 docs/          Product, platform, and roadmap documents
 src/platform/  Platform core: strategy objects, data API, backtest service
-src/dashboard/ Streamlit web platform
+src/platform_api/ FastAPI HTTP API for the frontend
+frontend/      React/Vite frontend application
+src/dashboard/ Legacy Streamlit prototype
 src/jobs/      Backend maintenance jobs
 src/features/  Feature calculation
 src/strategies/Strategy scoring and target generation logic

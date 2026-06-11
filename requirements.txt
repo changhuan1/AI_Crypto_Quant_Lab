@@ -16,3 +16,5 @@ huggingface_hub
 PyGithub
 apscheduler
 python-dotenv
+fastapi
+uvicorn
