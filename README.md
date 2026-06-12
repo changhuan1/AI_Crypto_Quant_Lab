@@ -91,6 +91,41 @@ python -m src.jobs.a_share_breadth_update
 
 Full ingestion can take a long time because the Shanghai Composite has many constituents and the data source can be unstable.
 
+## Tushare Data Source
+
+Tushare is supported as a professional A-share metadata source.
+
+Put your token in local `.env`:
+
+```text
+TUSHARE_TOKEN=your_token_here
+TUSHARE_API_URL=http://api.tushare.pro
+```
+
+Do not commit `.env`.
+
+Run a small validation:
+
+```powershell
+python -m src.jobs.tushare_a_share_update --start-date 20260601 --end-date 20260612 --max-status-dates 3
+python -m src.jobs.data_quality_update
+```
+
+If your account is limited to one request per minute, use:
+
+```powershell
+python -m src.jobs.tushare_a_share_update --start-date 20260601 --end-date 20260612 --max-status-dates 0 --pause-seconds 65
+```
+
+Current Tushare integration writes:
+
+- `trading_calendar`
+- `assets`
+- `index_constituents_history` when `index_weight` permission is available
+- `asset_status_daily` when limit-up/down and suspension permissions are available
+
+If `index_weight`, `stk_limit`, or `suspend_d` permissions are unavailable, data quality reports will keep warning about survivor-bias risk and incomplete trading-status data.
+
 ## Quant Core Checks
 
 The platform now includes the first professional quant-core checks:

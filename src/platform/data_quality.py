@@ -32,7 +32,18 @@ def build_data_quality_report(db_path: Path = DB_PATH) -> pd.DataFrame:
             GROUP BY asset_group
             """
         ).df()
-        status_count = con.execute("SELECT COUNT(*) FROM asset_status_daily").fetchone()[0]
+        status_summary = con.execute(
+            """
+            SELECT
+                COUNT(*) AS status_count,
+                SUM(CASE WHEN up_limit IS NOT NULL THEN 1 ELSE 0 END) AS up_limit_count,
+                SUM(CASE WHEN down_limit IS NOT NULL THEN 1 ELSE 0 END) AS down_limit_count,
+                SUM(CASE WHEN is_suspended THEN 1 ELSE 0 END) AS suspended_count,
+                SUM(CASE WHEN source LIKE '%no_limit%' THEN 1 ELSE 0 END) AS no_limit_source_count,
+                SUM(CASE WHEN source LIKE '%no_suspend%' THEN 1 ELSE 0 END) AS no_suspend_source_count
+            FROM asset_status_daily
+            """
+        ).df().iloc[0]
         constituents_count = con.execute("SELECT COUNT(*) FROM index_constituents_history").fetchone()[0]
         invalid_price_count = con.execute(
             """
@@ -86,7 +97,25 @@ def build_data_quality_report(db_path: Path = DB_PATH) -> pd.DataFrame:
             )
         )
 
-    severity = "warning" if status_count == 0 else "pass"
+    status_count = int(status_summary["status_count"] or 0)
+    up_limit_count = int(status_summary["up_limit_count"] or 0)
+    down_limit_count = int(status_summary["down_limit_count"] or 0)
+    no_limit_source_count = int(status_summary["no_limit_source_count"] or 0)
+    no_suspend_source_count = int(status_summary["no_suspend_source_count"] or 0)
+    status_is_partial = (
+        status_count > 0
+        and (up_limit_count == 0 or down_limit_count == 0 or no_limit_source_count > 0 or no_suspend_source_count > 0)
+    )
+    severity = "warning" if status_count == 0 or status_is_partial else "pass"
+    if status_count == 0:
+        status_message = "缺少停牌、ST、涨跌停等资产状态数据；当前回测只能在状态未知时按可交易处理"
+    elif status_is_partial:
+        status_message = (
+            f"资产状态表已有 {status_count} 行，但涨跌停或停复牌字段不完整；"
+            "当前回测仍可能低估交易限制"
+        )
+    else:
+        status_message = f"资产状态表已有 {status_count} 行，且涨跌停/停复牌字段可用"
     reports.append(
         _report(
             check_name="asset_status_daily",
@@ -94,11 +123,7 @@ def build_data_quality_report(db_path: Path = DB_PATH) -> pd.DataFrame:
             asset_group="A-share constituents",
             metric_name="status_rows",
             metric_value=float(status_count),
-            message=(
-                "缺少停牌、ST、涨跌停等资产状态数据；当前回测只能在状态未知时按可交易处理"
-                if status_count == 0
-                else f"资产状态表已有 {status_count} 行"
-            ),
+            message=status_message,
             created_at=created_at,
         )
     )
@@ -185,4 +210,3 @@ def _report(
         "message": message,
         "created_at": created_at,
     }
-
