@@ -154,11 +154,25 @@ def run_positions(run_id: str) -> list[dict[str, Any]]:
     return _records(
         _query(
             """
-            SELECT date, asset_id, quantity, close_price, market_value, weight
-            FROM positions_daily
-            WHERE run_id = ?
-            QUALIFY date = MAX(date) OVER ()
-            ORDER BY weight DESC
+            SELECT
+                p.date,
+                p.asset_id,
+                CASE
+                    WHEN p.asset_id LIKE 'A_STOCK_%' THEN REPLACE(p.asset_id, 'A_STOCK_', '')
+                    WHEN p.asset_id LIKE 'A_INDEX_%' THEN REPLACE(p.asset_id, 'A_INDEX_', '')
+                    WHEN p.asset_id LIKE 'CRYPTO_%' THEN REPLACE(p.asset_id, 'CRYPTO_', '')
+                    ELSE p.asset_id
+                END AS asset_code,
+                COALESCE(a.name, p.asset_id) AS asset_name,
+                p.quantity,
+                p.close_price,
+                p.market_value,
+                p.weight
+            FROM positions_daily p
+            LEFT JOIN assets a ON p.asset_id = a.asset_id
+            WHERE p.run_id = ?
+            QUALIFY p.date = MAX(p.date) OVER ()
+            ORDER BY p.weight DESC
             LIMIT 100
             """,
             [run_id],
@@ -171,10 +185,27 @@ def run_orders(run_id: str, limit: int = 200) -> list[dict[str, Any]]:
     return _records(
         _query(
             """
-            SELECT date, asset_id, side, status, quantity, price, notional, target_weight, reason
-            FROM orders
-            WHERE run_id = ?
-            ORDER BY date DESC, notional DESC
+            SELECT
+                o.date,
+                o.asset_id,
+                CASE
+                    WHEN o.asset_id LIKE 'A_STOCK_%' THEN REPLACE(o.asset_id, 'A_STOCK_', '')
+                    WHEN o.asset_id LIKE 'A_INDEX_%' THEN REPLACE(o.asset_id, 'A_INDEX_', '')
+                    WHEN o.asset_id LIKE 'CRYPTO_%' THEN REPLACE(o.asset_id, 'CRYPTO_', '')
+                    ELSE o.asset_id
+                END AS asset_code,
+                COALESCE(a.name, o.asset_id) AS asset_name,
+                o.side,
+                o.status,
+                o.quantity,
+                o.price,
+                o.notional,
+                o.target_weight,
+                o.reason
+            FROM orders o
+            LEFT JOIN assets a ON o.asset_id = a.asset_id
+            WHERE o.run_id = ?
+            ORDER BY o.date DESC, o.notional DESC
             LIMIT ?
             """,
             [run_id, limit],

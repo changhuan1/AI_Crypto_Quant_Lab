@@ -561,10 +561,11 @@ function ResultsPage({
         <div className="panel">
           <PanelHeader title="最新持仓" action={`${positions.length} 条`} />
           <DataTable
-            columns={["日期", "资产", "市值", "权重", "价格"]}
+            columns={["日期", "代码", "名称", "市值", "权重", "价格"]}
             rows={positions.map((row) => [
               cleanDate(row.date),
-              row.asset_id,
+              row.asset_code,
+              row.asset_name,
               formatMoney(row.market_value),
               formatPct(row.weight),
               formatNumber(row.close_price)
@@ -574,12 +575,13 @@ function ResultsPage({
         <div className="panel">
           <PanelHeader title="最近订单" action={`${orders.length} 条`} />
           <DataTable
-            columns={["日期", "状态", "方向", "资产", "金额", "目标仓位", "原因"]}
+            columns={["日期", "状态", "方向", "代码", "名称", "金额", "目标仓位", "原因"]}
             rows={orders.slice(0, 12).map((row) => [
               cleanDate(row.date),
               row.status,
               row.side,
-              row.asset_id,
+              row.asset_code,
+              row.asset_name,
               formatMoney(row.notional),
               formatPct(row.target_weight),
               row.reason
@@ -620,9 +622,10 @@ function RiskPage({
       <div className="panel">
         <PanelHeader title="模拟交易目标" />
         <DataTable
-          columns={["资产", "目标权重", "市值"]}
+          columns={["代码", "名称", "目标权重", "市值"]}
           rows={positions.slice(0, 10).map((row) => [
-            row.asset_id,
+            row.asset_code,
+            row.asset_name,
             formatPct(row.weight),
             formatMoney(row.market_value)
           ])}

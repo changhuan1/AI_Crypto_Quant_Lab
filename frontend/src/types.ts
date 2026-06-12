@@ -83,6 +83,8 @@ export type NavRow = {
 export type PositionRow = {
   date: string;
   asset_id: string;
+  asset_code: string;
+  asset_name: string;
   quantity: number;
   close_price: number;
   market_value: number;
@@ -92,6 +94,8 @@ export type PositionRow = {
 export type OrderRow = {
   date: string;
   asset_id: string;
+  asset_code: string;
+  asset_name: string;
   side: "BUY" | "SELL";
   status: "filled" | "rejected";
   quantity: number;

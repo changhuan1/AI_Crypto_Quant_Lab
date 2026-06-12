@@ -28,7 +28,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   overview: () => request<Overview>("/api/overview"),
   coverage: () => request<CoverageRow[]>("/api/data/coverage"),
-  dataQuality: () => request<DataQualityRow[]>("/api/data/quality?refresh=true"),
+  dataQuality: () => request<DataQualityRow[]>("/api/data/quality"),
   factorIc: () => request<FactorIcRow[]>("/api/research/factor-ic"),
   strategies: () => request<StrategyRow[]>("/api/strategies"),
   runs: () => request<RunRow[]>("/api/runs"),

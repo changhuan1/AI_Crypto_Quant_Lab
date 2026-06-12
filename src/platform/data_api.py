@@ -88,10 +88,26 @@ class DataPortal:
 
             return con.execute(
                 """
-                SELECT asset_id, date, strategy, score, signal, target_weight, risk_flag, reason
-                FROM signals_daily
-                WHERE strategy = ?
-                  AND date = ?
+                SELECT
+                    s.asset_id,
+                    CASE
+                        WHEN s.asset_id LIKE 'A_STOCK_%' THEN REPLACE(s.asset_id, 'A_STOCK_', '')
+                        WHEN s.asset_id LIKE 'A_INDEX_%' THEN REPLACE(s.asset_id, 'A_INDEX_', '')
+                        WHEN s.asset_id LIKE 'CRYPTO_%' THEN REPLACE(s.asset_id, 'CRYPTO_', '')
+                        ELSE s.asset_id
+                    END AS asset_code,
+                    COALESCE(a.name, s.asset_id) AS asset_name,
+                    s.date,
+                    s.strategy,
+                    s.score,
+                    s.signal,
+                    s.target_weight,
+                    s.risk_flag,
+                    s.reason
+                FROM signals_daily s
+                LEFT JOIN assets a ON s.asset_id = a.asset_id
+                WHERE s.strategy = ?
+                  AND s.date = ?
                 ORDER BY target_weight DESC, score DESC NULLS LAST
                 """,
                 [strategy_id, latest],
