@@ -424,6 +424,71 @@ h1 {
   overflow: auto;
 }
 
+.data-browser-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(160px, 0.45fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  color: var(--accent);
+  background: #e7f4ef;
+  border: 1px solid #b8dfd2;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.secondary-button:hover {
+  background: #d8eee6;
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dataset-summary {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f7faf8;
+  border: 1px solid #e1e8e3;
+  border-radius: 8px;
+}
+
+.dataset-summary div {
+  display: grid;
+  gap: 4px;
+}
+
+.dataset-summary div:last-child {
+  min-width: 110px;
+  text-align: right;
+}
+
+.dataset-summary strong {
+  color: var(--ink);
+}
+
+.dataset-summary span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -649,7 +714,8 @@ select {
   .metric-row,
   .page-grid,
   .page-grid.two,
-  .table-grid {
+  .table-grid,
+  .data-browser-toolbar {
     grid-template-columns: 1fr;
   }
 }
@@ -698,6 +764,14 @@ select {
   .metric-row,
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .dataset-summary {
+    display: grid;
+  }
+
+  .dataset-summary div:last-child {
+    text-align: left;
   }
 
   .chart-box {

@@ -93,6 +93,7 @@ class DataPortal:
                     CASE
                         WHEN s.asset_id LIKE 'A_STOCK_%' THEN REPLACE(s.asset_id, 'A_STOCK_', '')
                         WHEN s.asset_id LIKE 'A_INDEX_%' THEN REPLACE(s.asset_id, 'A_INDEX_', '')
+                        WHEN s.asset_id LIKE 'A_ETF_%' THEN REPLACE(s.asset_id, 'A_ETF_', '')
                         WHEN s.asset_id LIKE 'CRYPTO_%' THEN REPLACE(s.asset_id, 'CRYPTO_', '')
                         ELSE s.asset_id
                     END AS asset_code,

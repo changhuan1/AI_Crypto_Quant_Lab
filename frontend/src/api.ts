@@ -1,6 +1,8 @@
 import type {
   BacktestPayload,
   BacktestResponse,
+  DataCatalogRow,
+  DataPreview,
   CoverageRow,
   DataQualityRow,
   FactorIcRow,
@@ -29,6 +31,9 @@ export const api = {
   overview: () => request<Overview>("/api/overview"),
   coverage: () => request<CoverageRow[]>("/api/data/coverage"),
   dataQuality: () => request<DataQualityRow[]>("/api/data/quality"),
+  dataCatalog: () => request<DataCatalogRow[]>("/api/data/catalog"),
+  dataPreview: (dataset: string, limit: number) =>
+    request<DataPreview>(`/api/data/preview/${dataset}?limit=${limit}`),
   factorIc: () => request<FactorIcRow[]>("/api/research/factor-ic"),
   strategies: () => request<StrategyRow[]>("/api/strategies"),
   runs: () => request<RunRow[]>("/api/runs"),

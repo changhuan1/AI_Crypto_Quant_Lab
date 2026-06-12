@@ -31,6 +31,8 @@ import { api } from "./api";
 import type {
   BacktestPayload,
   CoverageRow,
+  DataCatalogRow,
+  DataPreview,
   DataQualityRow,
   FactorIcRow,
   MetricRow,
@@ -59,6 +61,11 @@ function App() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [coverage, setCoverage] = useState<CoverageRow[]>([]);
   const [dataQuality, setDataQuality] = useState<DataQualityRow[]>([]);
+  const [dataCatalog, setDataCatalog] = useState<DataCatalogRow[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState("prices_daily");
+  const [previewLimit, setPreviewLimit] = useState(100);
+  const [dataPreview, setDataPreview] = useState<DataPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [factorIc, setFactorIc] = useState<FactorIcRow[]>([]);
   const [strategies, setStrategies] = useState<StrategyRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -80,10 +87,11 @@ function App() {
     setLoading(true);
     setApiError("");
     try {
-      const [overviewData, coverageData, qualityData, factorIcData, strategiesData, runsData] = await Promise.all([
+      const [overviewData, coverageData, qualityData, catalogData, factorIcData, strategiesData, runsData] = await Promise.all([
         api.overview(),
         api.coverage(),
         api.dataQuality(),
+        api.dataCatalog(),
         api.factorIc(),
         api.strategies(),
         api.runs()
@@ -91,6 +99,7 @@ function App() {
       setOverview(overviewData);
       setCoverage(coverageData);
       setDataQuality(qualityData);
+      setDataCatalog(catalogData);
       setFactorIc(factorIcData);
       setStrategies(strategiesData);
       setRuns(runsData);
@@ -123,9 +132,27 @@ function App() {
     }
   }
 
+  async function loadDataPreview(dataset = selectedDataset, limit = previewLimit) {
+    setPreviewLoading(true);
+    try {
+      const preview = await api.dataPreview(dataset, limit);
+      setDataPreview(preview);
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "数据预览读取失败");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   useEffect(() => {
     loadBaseData();
   }, []);
+
+  useEffect(() => {
+    if (page === "data") {
+      loadDataPreview(selectedDataset, previewLimit);
+    }
+  }, [page, selectedDataset, previewLimit]);
 
   useEffect(() => {
     const runId = selectedRunId || runs.find((run) => run.status === "success")?.run_id || "";
@@ -206,7 +233,20 @@ function App() {
         {page === "overview" && (
           <OverviewPage overview={overview} nav={nav} runs={runs} metricMap={metricMap} />
         )}
-        {page === "data" && <DataPage coverage={coverage} dataQuality={dataQuality} />}
+        {page === "data" && (
+          <DataPage
+            coverage={coverage}
+            dataQuality={dataQuality}
+            dataCatalog={dataCatalog}
+            selectedDataset={selectedDataset}
+            setSelectedDataset={setSelectedDataset}
+            previewLimit={previewLimit}
+            setPreviewLimit={setPreviewLimit}
+            dataPreview={dataPreview}
+            previewLoading={previewLoading}
+            onRefreshPreview={() => loadDataPreview()}
+          />
+        )}
         {page === "strategies" && <StrategyPage strategies={strategies} factorIc={factorIc} />}
         {page === "backtest" && (
           <BacktestPage
@@ -284,13 +324,92 @@ function OverviewPage({
 
 function DataPage({
   coverage,
-  dataQuality
+  dataQuality,
+  dataCatalog,
+  selectedDataset,
+  setSelectedDataset,
+  previewLimit,
+  setPreviewLimit,
+  dataPreview,
+  previewLoading,
+  onRefreshPreview
 }: {
   coverage: CoverageRow[];
   dataQuality: DataQualityRow[];
+  dataCatalog: DataCatalogRow[];
+  selectedDataset: string;
+  setSelectedDataset: (dataset: string) => void;
+  previewLimit: number;
+  setPreviewLimit: (limit: number) => void;
+  dataPreview: DataPreview | null;
+  previewLoading: boolean;
+  onRefreshPreview: () => void;
 }) {
+  const selectedMeta = dataCatalog.find((row) => row.dataset === selectedDataset);
+  const previewRows =
+    dataPreview?.rows.map((row) => dataPreview.columns.map((column) => formatCell(row[column]))) ?? [];
+
   return (
     <section className="page-grid single">
+      <div className="panel">
+        <PanelHeader
+          title="数据浏览器"
+          action={
+            dataPreview
+              ? `展示 ${dataPreview.rows.length.toLocaleString()} / ${dataPreview.row_count.toLocaleString()} 行`
+              : "未加载"
+          }
+        />
+        <div className="data-browser-toolbar">
+          <label>
+            数据集
+            <select
+              value={selectedDataset}
+              onChange={(event) => setSelectedDataset(event.target.value)}
+            >
+              {dataCatalog.map((row) => (
+                <option value={row.dataset} key={row.dataset}>
+                  {row.label}（{row.row_count.toLocaleString()} 行）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            展示行数
+            <select
+              value={previewLimit}
+              onChange={(event) => setPreviewLimit(Number(event.target.value))}
+            >
+              {[50, 100, 200, 500].map((limit) => (
+                <option value={limit} key={limit}>
+                  前 {limit} 行
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="secondary-button" onClick={onRefreshPreview} disabled={previewLoading}>
+            <RefreshCw size={16} />
+            {previewLoading ? "读取中" : "刷新预览"}
+          </button>
+        </div>
+        <div className="dataset-summary">
+          <div>
+            <strong>{dataPreview?.label ?? selectedMeta?.label ?? selectedDataset}</strong>
+            <span>{dataPreview?.description ?? selectedMeta?.description ?? "选择一个数据集查看表格预览"}</span>
+          </div>
+          <div>
+            <strong>{(dataPreview?.row_count ?? selectedMeta?.row_count ?? 0).toLocaleString()}</strong>
+            <span>总行数</span>
+          </div>
+        </div>
+        {previewLoading ? (
+          <div className="empty-state">正在读取数据预览</div>
+        ) : dataPreview ? (
+          <DataTable columns={dataPreview.columns} rows={previewRows} />
+        ) : (
+          <div className="empty-state">暂无数据预览</div>
+        )}
+      </div>
       <div className="panel">
         <PanelHeader title="数据覆盖" action={`${coverage.length} 组`} />
         <DataTable
@@ -764,6 +883,23 @@ function formatNumber(value?: number) {
 function formatMoney(value?: number) {
   if (value === undefined || value === null || Number.isNaN(value)) return "-";
   return value.toLocaleString("zh-CN", { maximumFractionDigits: 0 });
+}
+
+function formatCell(value: unknown): React.ReactNode {
+  if (value === undefined || value === null) return "-";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "-";
+    if (Number.isInteger(value)) return value.toLocaleString("zh-CN");
+    if (Math.abs(value) >= 1000) {
+      return value.toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+    }
+    return value.toFixed(4);
+  }
+
+  const text = String(value);
+  if (text.length <= 80) return text;
+  return <span title={text}>{`${text.slice(0, 77)}...`}</span>;
 }
 
 function cleanDate(value?: string | null) {

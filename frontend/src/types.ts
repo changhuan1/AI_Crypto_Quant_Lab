@@ -28,6 +28,23 @@ export type DataQualityRow = {
   created_at: string;
 };
 
+export type DataCatalogRow = {
+  dataset: string;
+  label: string;
+  description: string;
+  row_count: number;
+};
+
+export type DataPreview = {
+  dataset: string;
+  label: string;
+  description: string;
+  row_count: number;
+  limit: number;
+  columns: string[];
+  rows: Record<string, unknown>[];
+};
+
 export type FactorIcRow = {
   factor_name: string;
   horizon: number;
