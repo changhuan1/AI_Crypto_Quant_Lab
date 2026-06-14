@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
+from pathlib import Path
+import os
+import subprocess
+import sys
+import threading
 from typing import Any
+from uuid import uuid4
 
 import duckdb
 import pandas as pd
@@ -31,6 +37,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_PULL_LOG_DIR = PROJECT_ROOT / "data" / "logs" / "data_pulls"
+DATA_PULL_LOCK = threading.Lock()
+DATA_PULL_STATE: dict[str, Any] = {
+    "job_id": None,
+    "status": "idle",
+    "dataset": "a_share_prices",
+    "start_date": None,
+    "end_date": None,
+    "limit": None,
+    "started_at": None,
+    "finished_at": None,
+    "return_code": None,
+    "message": "尚未启动数据拉取任务",
+    "log_path": None,
+    "process": None,
+}
 
 
 DATASET_PREVIEWS: dict[str, dict[str, str]] = {
@@ -346,6 +371,12 @@ class BacktestPayload(BaseModel):
     fee_rate: float = Field(default=0.001, ge=0.0, le=0.05)
 
 
+class AShareDataPullPayload(BaseModel):
+    start_date: date
+    end_date: date
+    limit: int | None = Field(default=None, ge=1, le=6000)
+
+
 @app.on_event("startup")
 def startup() -> None:
     ensure_platform_ready()
@@ -439,6 +470,73 @@ def data_preview(dataset: str, limit: int = 100) -> dict[str, Any]:
         "columns": list(frame.columns),
         "rows": _records(frame),
     }
+
+
+@app.post("/api/data/pulls/a-share-prices")
+def start_a_share_data_pull(payload: AShareDataPullPayload) -> dict[str, Any]:
+    if payload.start_date > payload.end_date:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
+
+    with DATA_PULL_LOCK:
+        _refresh_data_pull_state()
+        if DATA_PULL_STATE["status"] == "running":
+            raise HTTPException(status_code=409, detail="已有 A 股行情拉取任务正在运行")
+
+        job_id = f"a_share_{uuid4().hex[:12]}"
+        DATA_PULL_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log_path = DATA_PULL_LOG_DIR / f"{job_id}.log"
+        command = [
+            sys.executable,
+            "-u",
+            "-m",
+            "src.data_ingestion.a_share_market_prices",
+            "--start-date",
+            payload.start_date.strftime("%Y%m%d"),
+            "--end-date",
+            payload.end_date.strftime("%Y%m%d"),
+        ]
+        if payload.limit is not None:
+            command.extend(["--limit", str(payload.limit)])
+
+        log_file = log_path.open("w", encoding="utf-8")
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=str(PROJECT_ROOT),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            log_file.close()
+            raise
+        log_file.close()
+
+        DATA_PULL_STATE.update(
+            {
+                "job_id": job_id,
+                "status": "running",
+                "dataset": "a_share_prices",
+                "start_date": payload.start_date.isoformat(),
+                "end_date": payload.end_date.isoformat(),
+                "limit": payload.limit,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": None,
+                "return_code": None,
+                "message": "正在拉取 A 股行情",
+                "log_path": str(log_path),
+                "process": process,
+            }
+        )
+        return _data_pull_response()
+
+
+@app.get("/api/data/pulls/a-share-prices/status")
+def a_share_data_pull_status() -> dict[str, Any]:
+    with DATA_PULL_LOCK:
+        _refresh_data_pull_state()
+        return _data_pull_response()
 
 
 @app.get("/api/strategies")
@@ -624,6 +722,33 @@ def _row_count(sql: str) -> int:
 
 def _bounded_limit(limit: int) -> int:
     return max(1, min(int(limit), 500))
+
+
+def _refresh_data_pull_state() -> None:
+    process = DATA_PULL_STATE.get("process")
+    if process is None or DATA_PULL_STATE["status"] != "running":
+        return
+    return_code = process.poll()
+    if return_code is None:
+        return
+    DATA_PULL_STATE["return_code"] = return_code
+    DATA_PULL_STATE["finished_at"] = datetime.now(timezone.utc).isoformat()
+    DATA_PULL_STATE["status"] = "success" if return_code == 0 else "failed"
+    DATA_PULL_STATE["message"] = "数据拉取完成" if return_code == 0 else "数据拉取失败，请查看日志"
+    DATA_PULL_STATE["process"] = None
+
+
+def _data_pull_response() -> dict[str, Any]:
+    log_text = ""
+    log_path = DATA_PULL_STATE.get("log_path")
+    if log_path and Path(log_path).exists():
+        lines = Path(log_path).read_text(encoding="utf-8", errors="replace").splitlines()
+        log_text = "\n".join(lines[-80:])
+    return {
+        key: value
+        for key, value in DATA_PULL_STATE.items()
+        if key not in {"process", "log_path"}
+    } | {"log": log_text}
 
 
 def _coverage_value(coverage: pd.DataFrame, group: str, column: str) -> int:

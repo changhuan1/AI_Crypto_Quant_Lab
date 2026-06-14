@@ -5,6 +5,7 @@ import {
   BarChart3,
   CheckCircle2,
   Database,
+  Download,
   Gauge,
   LayoutDashboard,
   LineChart,
@@ -29,10 +30,12 @@ import {
 
 import { api } from "./api";
 import type {
+  AShareDataPullPayload,
   BacktestPayload,
   CoverageRow,
   DataCatalogRow,
   DataPreview,
+  DataPullStatus,
   DataQualityRow,
   FactorIcRow,
   MetricRow,
@@ -66,6 +69,7 @@ function App() {
   const [previewLimit, setPreviewLimit] = useState(100);
   const [dataPreview, setDataPreview] = useState<DataPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [dataPull, setDataPull] = useState<DataPullStatus | null>(null);
   const [factorIc, setFactorIc] = useState<FactorIcRow[]>([]);
   const [strategies, setStrategies] = useState<StrategyRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -144,8 +148,33 @@ function App() {
     }
   }
 
+  async function loadDataPullStatus(refreshAfterFinish = false) {
+    try {
+      const status = await api.dataPullStatus();
+      setDataPull(status);
+      if (refreshAfterFinish && status.status !== "running") {
+        await Promise.all([loadBaseData(), loadDataPreview()]);
+      }
+      return status;
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "数据拉取状态读取失败");
+      return null;
+    }
+  }
+
+  async function handleStartDataPull(payload: AShareDataPullPayload) {
+    setApiError("");
+    try {
+      const status = await api.startAShareDataPull(payload);
+      setDataPull(status);
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "数据拉取任务启动失败");
+    }
+  }
+
   useEffect(() => {
     loadBaseData();
+    loadDataPullStatus();
   }, []);
 
   useEffect(() => {
@@ -153,6 +182,12 @@ function App() {
       loadDataPreview(selectedDataset, previewLimit);
     }
   }, [page, selectedDataset, previewLimit]);
+
+  useEffect(() => {
+    if (page !== "data" || dataPull?.status !== "running") return;
+    const timer = window.setInterval(() => loadDataPullStatus(true), 2000);
+    return () => window.clearInterval(timer);
+  }, [page, dataPull?.status]);
 
   useEffect(() => {
     const runId = selectedRunId || runs.find((run) => run.status === "success")?.run_id || "";
@@ -244,6 +279,8 @@ function App() {
             setPreviewLimit={setPreviewLimit}
             dataPreview={dataPreview}
             previewLoading={previewLoading}
+            dataPull={dataPull}
+            onStartDataPull={handleStartDataPull}
             onRefreshPreview={() => loadDataPreview()}
           />
         )}
@@ -332,6 +369,8 @@ function DataPage({
   setPreviewLimit,
   dataPreview,
   previewLoading,
+  dataPull,
+  onStartDataPull,
   onRefreshPreview
 }: {
   coverage: CoverageRow[];
@@ -343,14 +382,87 @@ function DataPage({
   setPreviewLimit: (limit: number) => void;
   dataPreview: DataPreview | null;
   previewLoading: boolean;
+  dataPull: DataPullStatus | null;
+  onStartDataPull: (payload: AShareDataPullPayload) => void;
   onRefreshPreview: () => void;
 }) {
+  const [pullStartDate, setPullStartDate] = useState("2024-01-01");
+  const [pullEndDate, setPullEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [pullLimit, setPullLimit] = useState("20");
   const selectedMeta = dataCatalog.find((row) => row.dataset === selectedDataset);
   const previewRows =
     dataPreview?.rows.map((row) => dataPreview.columns.map((column) => formatCell(row[column]))) ?? [];
 
   return (
     <section className="page-grid single">
+      <div className="panel">
+        <PanelHeader
+          title="A股行情拉取"
+          action={
+            <span className={`pull-status ${dataPull?.status ?? "idle"}`}>
+              {dataPullStatusLabel(dataPull?.status)}
+            </span>
+          }
+        />
+        <div className="data-pull-form">
+          <label>
+            开始日期
+            <input
+              type="date"
+              value={pullStartDate}
+              onChange={(event) => setPullStartDate(event.target.value)}
+              disabled={dataPull?.status === "running"}
+            />
+          </label>
+          <label>
+            结束日期
+            <input
+              type="date"
+              value={pullEndDate}
+              onChange={(event) => setPullEndDate(event.target.value)}
+              disabled={dataPull?.status === "running"}
+            />
+          </label>
+          <label>
+            股票数量
+            <input
+              type="number"
+              min="1"
+              max="6000"
+              placeholder="留空表示全部"
+              value={pullLimit}
+              onChange={(event) => setPullLimit(event.target.value)}
+              disabled={dataPull?.status === "running"}
+            />
+          </label>
+          <button
+            className="primary-button"
+            disabled={dataPull?.status === "running" || !pullStartDate || !pullEndDate}
+            onClick={() =>
+              onStartDataPull({
+                start_date: pullStartDate,
+                end_date: pullEndDate,
+                limit: pullLimit ? Number(pullLimit) : null
+              })
+            }
+          >
+            <Download size={18} />
+            {dataPull?.status === "running" ? "正在拉取" : "开始拉取"}
+          </button>
+        </div>
+        <div className="pull-guidance">
+          <span>数量留空会拉取当前上证指数全部成分股；数量越多，运行时间越长。</span>
+          {dataPull?.message && <strong>{dataPull.message}</strong>}
+        </div>
+        {dataPull?.job_id && (
+          <div className="pull-details">
+            <span>任务：{dataPull.job_id}</span>
+            <span>范围：{dataPull.start_date} 至 {dataPull.end_date}</span>
+            <span>数量：{dataPull.limit ?? "全部成分股"}</span>
+          </div>
+        )}
+        {dataPull?.log && <pre className="pull-log">{dataPull.log}</pre>}
+      </div>
       <div className="panel">
         <PanelHeader
           title="数据浏览器"
@@ -868,6 +980,13 @@ function KpiLine({
 
 function pageTitle(page: Page) {
   return pages.find((item) => item.id === page)?.label ?? "总览";
+}
+
+function dataPullStatusLabel(status?: DataPullStatus["status"]) {
+  if (status === "running") return "运行中";
+  if (status === "success") return "已完成";
+  if (status === "failed") return "失败";
+  return "未运行";
 }
 
 function formatPct(value?: number) {

@@ -432,6 +432,74 @@ h1 {
   margin-bottom: 12px;
 }
 
+.data-pull-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.pull-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 9px;
+  color: #475467;
+  background: #eef1f0;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pull-status.running {
+  color: #7a4b09;
+  background: #fff4df;
+}
+
+.pull-status.success {
+  color: #0f5d4a;
+  background: #e7f4ef;
+}
+
+.pull-status.failed {
+  color: #7a271a;
+  background: #ffebe7;
+}
+
+.pull-guidance,
+.pull-details {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 18px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pull-guidance strong {
+  color: var(--ink);
+}
+
+.pull-details {
+  justify-content: flex-start;
+  padding-top: 10px;
+  border-top: 1px solid #edf1ee;
+}
+
+.pull-log {
+  max-height: 260px;
+  margin: 12px 0 0;
+  padding: 12px;
+  overflow: auto;
+  color: #dff7ec;
+  background: #23312d;
+  border-radius: 6px;
+  font: 12px/1.65 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .secondary-button {
   display: inline-flex;
   align-items: center;
@@ -715,7 +783,8 @@ select {
   .page-grid,
   .page-grid.two,
   .table-grid,
-  .data-browser-toolbar {
+  .data-browser-toolbar,
+  .data-pull-form {
     grid-template-columns: 1fr;
   }
 }

@@ -45,6 +45,26 @@ export type DataPreview = {
   rows: Record<string, unknown>[];
 };
 
+export type AShareDataPullPayload = {
+  start_date: string;
+  end_date: string;
+  limit: number | null;
+};
+
+export type DataPullStatus = {
+  job_id: string | null;
+  status: "idle" | "running" | "success" | "failed";
+  dataset: string;
+  start_date: string | null;
+  end_date: string | null;
+  limit: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  return_code: number | null;
+  message: string;
+  log: string;
+};
+
 export type FactorIcRow = {
   factor_name: string;
   horizon: number;

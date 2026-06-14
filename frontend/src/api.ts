@@ -1,7 +1,9 @@
 import type {
   BacktestPayload,
   BacktestResponse,
+  AShareDataPullPayload,
   DataCatalogRow,
+  DataPullStatus,
   DataPreview,
   CoverageRow,
   DataQualityRow,
@@ -34,6 +36,12 @@ export const api = {
   dataCatalog: () => request<DataCatalogRow[]>("/api/data/catalog"),
   dataPreview: (dataset: string, limit: number) =>
     request<DataPreview>(`/api/data/preview/${dataset}?limit=${limit}`),
+  dataPullStatus: () => request<DataPullStatus>("/api/data/pulls/a-share-prices/status"),
+  startAShareDataPull: (payload: AShareDataPullPayload) =>
+    request<DataPullStatus>("/api/data/pulls/a-share-prices", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
   factorIc: () => request<FactorIcRow[]>("/api/research/factor-ic"),
   strategies: () => request<StrategyRow[]>("/api/strategies"),
   runs: () => request<RunRow[]>("/api/runs"),
