@@ -97,6 +97,115 @@ def fetch_stock_basic(client: TushareClient) -> pd.DataFrame:
     )
 
 
+def fetch_raw_daily(client: TushareClient, trade_date: str) -> pd.DataFrame:
+    frame = client.query(
+        "daily",
+        params={"trade_date": trade_date},
+        fields="ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount",
+    )
+    if frame.empty:
+        return frame
+    frame = frame.loc[frame["ts_code"].str.endswith(".SH")].copy()
+    frame["asset_id"] = frame["ts_code"].map(tushare_code_to_asset_id)
+    frame["date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d").dt.date
+    numeric_columns = ["open", "high", "low", "close", "pre_close", "change", "pct_chg", "vol", "amount"]
+    for column in numeric_columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    frame["volume"] = frame["vol"] * 100.0
+    frame["turnover"] = frame["amount"] * 1000.0
+    frame["source"] = "tushare"
+    frame["created_at"] = datetime.now(timezone.utc)
+    return frame.rename(columns={"pct_chg": "pct_change"})[
+        [
+            "asset_id", "date", "open", "high", "low", "close", "pre_close", "change",
+            "pct_change", "volume", "turnover", "source", "created_at",
+        ]
+    ]
+
+
+def fetch_adjustment_factors(client: TushareClient, trade_date: str) -> pd.DataFrame:
+    frame = client.query(
+        "adj_factor",
+        params={"trade_date": trade_date},
+        fields="ts_code,trade_date,adj_factor",
+    )
+    if frame.empty:
+        return frame
+    frame = frame.loc[frame["ts_code"].str.endswith(".SH")].copy()
+    frame["asset_id"] = frame["ts_code"].map(tushare_code_to_asset_id)
+    frame["date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d").dt.date
+    frame["adj_factor"] = pd.to_numeric(frame["adj_factor"], errors="coerce")
+    frame["source"] = "tushare"
+    frame["created_at"] = datetime.now(timezone.utc)
+    return frame[["asset_id", "date", "adj_factor", "source", "created_at"]]
+
+
+def fetch_daily_market_indicators(client: TushareClient, trade_date: str) -> pd.DataFrame:
+    frame = client.query(
+        "daily_basic",
+        params={"trade_date": trade_date},
+        fields=(
+            "ts_code,trade_date,turnover_rate,turnover_rate_f,volume_ratio,pe,pe_ttm,pb,ps,ps_ttm,"
+            "dv_ratio,dv_ttm,total_share,float_share,free_share,total_mv,circ_mv"
+        ),
+    )
+    if frame.empty:
+        return frame
+    frame = frame.loc[frame["ts_code"].str.endswith(".SH")].copy()
+    frame["asset_id"] = frame["ts_code"].map(tushare_code_to_asset_id)
+    frame["date"] = pd.to_datetime(frame["trade_date"], format="%Y%m%d").dt.date
+    numeric_columns = [
+        "turnover_rate", "turnover_rate_f", "volume_ratio", "pe", "pe_ttm", "pb", "ps", "ps_ttm",
+        "dv_ratio", "dv_ttm", "total_share", "float_share", "free_share", "total_mv", "circ_mv",
+    ]
+    for column in numeric_columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    for column in ["total_share", "float_share", "free_share"]:
+        frame[column] = frame[column] * 10_000.0
+    for column in ["total_mv", "circ_mv"]:
+        frame[column] = frame[column] * 10_000.0
+    frame["source"] = "tushare"
+    frame["created_at"] = datetime.now(timezone.utc)
+    return frame.rename(
+        columns={
+            "turnover_rate_f": "turnover_rate_free",
+            "dv_ratio": "dividend_yield",
+            "dv_ttm": "dividend_yield_ttm",
+            "total_mv": "total_market_value",
+            "circ_mv": "circulating_market_value",
+        }
+    )[
+        [
+            "asset_id", "date", "turnover_rate", "turnover_rate_free", "volume_ratio", "pe", "pe_ttm",
+            "pb", "ps", "ps_ttm", "dividend_yield", "dividend_yield_ttm", "total_share", "float_share",
+            "free_share", "total_market_value", "circulating_market_value", "source", "created_at",
+        ]
+    ]
+
+
+def fetch_asset_name_history(client: TushareClient) -> pd.DataFrame:
+    frame = client.query(
+        "namechange",
+        params={},
+        fields="ts_code,name,start_date,end_date,ann_date,change_reason",
+    )
+    if frame.empty:
+        return frame
+    frame = frame.loc[frame["ts_code"].str.endswith(".SH")].copy()
+    frame["asset_id"] = frame["ts_code"].map(tushare_code_to_asset_id)
+    for column in ["start_date", "end_date", "ann_date"]:
+        frame[column] = pd.to_datetime(frame[column].replace("", pd.NA), format="%Y%m%d", errors="coerce").dt.date
+    frame["is_st_name"] = frame["name"].fillna("").str.contains(r"\*?ST", case=False, regex=True)
+    frame["source"] = "tushare"
+    frame["created_at"] = datetime.now(timezone.utc)
+    return frame.rename(columns={"ann_date": "announcement_date"})[
+        [
+            "asset_id", "name", "start_date", "end_date", "announcement_date", "change_reason",
+            "is_st_name", "source", "created_at",
+        ]
+    ].dropna(subset=["asset_id", "name", "start_date"])
+
+
 def fetch_index_weight(
     client: TushareClient,
     index_code: str,
@@ -236,6 +345,22 @@ def build_asset_status_from_tushare(
 
 def save_trade_calendar(calendar: pd.DataFrame, db_path: Path = DB_PATH) -> None:
     _insert_or_replace(db_path, "trading_calendar", calendar)
+
+
+def save_raw_daily(frame: pd.DataFrame, db_path: Path = DB_PATH) -> None:
+    _insert_or_replace(db_path, "raw_prices_daily", frame)
+
+
+def save_adjustment_factors(frame: pd.DataFrame, db_path: Path = DB_PATH) -> None:
+    _insert_or_replace(db_path, "adjustment_factors", frame)
+
+
+def save_daily_market_indicators(frame: pd.DataFrame, db_path: Path = DB_PATH) -> None:
+    _insert_or_replace(db_path, "daily_market_indicators", frame)
+
+
+def save_asset_name_history(frame: pd.DataFrame, db_path: Path = DB_PATH) -> None:
+    _insert_or_replace(db_path, "asset_name_history", frame)
 
 
 def save_stock_basic_to_assets(stock_basic: pd.DataFrame, db_path: Path = DB_PATH) -> None:

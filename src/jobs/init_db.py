@@ -32,6 +32,68 @@ CREATE TABLE IF NOT EXISTS prices_daily (
     PRIMARY KEY(asset_id, date, source)
 );
 
+CREATE TABLE IF NOT EXISTS raw_prices_daily (
+    asset_id TEXT,
+    date DATE,
+    open DOUBLE,
+    high DOUBLE,
+    low DOUBLE,
+    close DOUBLE,
+    pre_close DOUBLE,
+    change DOUBLE,
+    pct_change DOUBLE,
+    volume DOUBLE,
+    turnover DOUBLE,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(asset_id, date, source)
+);
+
+CREATE TABLE IF NOT EXISTS adjustment_factors (
+    asset_id TEXT,
+    date DATE,
+    adj_factor DOUBLE,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(asset_id, date, source)
+);
+
+CREATE TABLE IF NOT EXISTS daily_market_indicators (
+    asset_id TEXT,
+    date DATE,
+    turnover_rate DOUBLE,
+    turnover_rate_free DOUBLE,
+    volume_ratio DOUBLE,
+    pe DOUBLE,
+    pe_ttm DOUBLE,
+    pb DOUBLE,
+    ps DOUBLE,
+    ps_ttm DOUBLE,
+    dividend_yield DOUBLE,
+    dividend_yield_ttm DOUBLE,
+    total_share DOUBLE,
+    float_share DOUBLE,
+    free_share DOUBLE,
+    total_market_value DOUBLE,
+    circulating_market_value DOUBLE,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(asset_id, date, source)
+);
+
+CREATE TABLE IF NOT EXISTS asset_name_history (
+    asset_id TEXT,
+    name TEXT,
+    start_date DATE,
+    end_date DATE,
+    announcement_date DATE,
+    change_reason TEXT,
+    is_st_name BOOLEAN,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(asset_id, name, start_date)
+);
+
 CREATE TABLE IF NOT EXISTS github_metrics (
     repo_full_name TEXT,
     date DATE,
@@ -225,6 +287,18 @@ CREATE TABLE IF NOT EXISTS index_constituents_history (
     source TEXT,
     created_at TIMESTAMP,
     PRIMARY KEY(index_id, date, asset_id)
+);
+
+CREATE TABLE IF NOT EXISTS market_universe_daily (
+    market TEXT,
+    date DATE,
+    asset_id TEXT,
+    asset_name TEXT,
+    is_listed BOOLEAN,
+    is_tradable BOOLEAN,
+    source TEXT,
+    created_at TIMESTAMP,
+    PRIMARY KEY(market, date, asset_id)
 );
 
 CREATE TABLE IF NOT EXISTS asset_status_daily (

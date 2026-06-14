@@ -8,6 +8,7 @@ pyyaml
 requests
 httpx
 akshare
+baostock
 ccxt
 vectorbt
 streamlit

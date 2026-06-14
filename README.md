@@ -126,6 +126,22 @@ Current Tushare integration writes:
 
 If `index_weight`, `stk_limit`, or `suspend_d` permissions are unavailable, data quality reports will keep warning about survivor-bias risk and incomplete trading-status data.
 
+### Canonical Tushare market data
+
+The canonical A-share data layer stores unadjusted prices, adjustment factors, daily valuation data, and historical names separately:
+
+```powershell
+python -m src.jobs.tushare_market_core_update --start-date 20260601 --end-date 20260614 --max-trade-dates 1
+```
+
+The current low-frequency Tushare account is suitable for daily incremental updates. Do not run a multi-year full backfill until API frequency has been upgraded or a second historical data source has been configured. See `docs/DATA_COMPLETENESS_PLAN.md`.
+
+Baostock can be used as the historical backfill source for raw prices, trading status, ST flags, and daily Shanghai A-share universe snapshots:
+
+```powershell
+python -m src.jobs.baostock_history_backfill --start-date 2024-01-01 --end-date 2026-06-14 --limit 5 --max-universe-dates 5
+```
+
 ## Quant Core Checks
 
 The platform now includes the first professional quant-core checks:

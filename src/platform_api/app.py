@@ -101,6 +101,61 @@ DATASET_PREVIEWS: dict[str, dict[str, str]] = {
             LIMIT ?
         """,
     },
+    "raw_prices_daily": {
+        "label": "原始日线行情",
+        "description": "Tushare 未复权日线行情。成交量统一为股，成交额统一为元。",
+        "count_sql": "SELECT COUNT(*) AS row_count FROM raw_prices_daily",
+        "preview_sql": """
+            SELECT r.date, r.asset_id, REPLACE(r.asset_id, 'A_STOCK_', '') AS asset_code,
+                   COALESCE(a.name, r.asset_id) AS asset_name, r.open, r.high, r.low, r.close,
+                   r.pre_close, r.change, r.pct_change, r.volume, r.turnover, r.source, r.created_at
+            FROM raw_prices_daily r
+            LEFT JOIN assets a ON r.asset_id = a.asset_id
+            ORDER BY r.date DESC, r.asset_id
+            LIMIT ?
+        """,
+    },
+    "adjustment_factors": {
+        "label": "复权因子",
+        "description": "用于从原始价格计算前复权或后复权价格的每日复权因子。",
+        "count_sql": "SELECT COUNT(*) AS row_count FROM adjustment_factors",
+        "preview_sql": """
+            SELECT f.date, f.asset_id, REPLACE(f.asset_id, 'A_STOCK_', '') AS asset_code,
+                   COALESCE(a.name, f.asset_id) AS asset_name, f.adj_factor, f.source, f.created_at
+            FROM adjustment_factors f
+            LEFT JOIN assets a ON f.asset_id = a.asset_id
+            ORDER BY f.date DESC, f.asset_id
+            LIMIT ?
+        """,
+    },
+    "daily_market_indicators": {
+        "label": "每日估值与市值",
+        "description": "换手率、PE、PB、股息率、股本、总市值和流通市值等每日指标。",
+        "count_sql": "SELECT COUNT(*) AS row_count FROM daily_market_indicators",
+        "preview_sql": """
+            SELECT d.date, d.asset_id, REPLACE(d.asset_id, 'A_STOCK_', '') AS asset_code,
+                   COALESCE(a.name, d.asset_id) AS asset_name, d.turnover_rate, d.volume_ratio,
+                   d.pe, d.pe_ttm, d.pb, d.ps_ttm, d.dividend_yield_ttm,
+                   d.total_market_value, d.circulating_market_value, d.source, d.created_at
+            FROM daily_market_indicators d
+            LEFT JOIN assets a ON d.asset_id = a.asset_id
+            ORDER BY d.date DESC, d.asset_id
+            LIMIT ?
+        """,
+    },
+    "asset_name_history": {
+        "label": "历史名称与 ST 区间",
+        "description": "股票历史名称、生效区间、公告日期以及是否为 ST 名称。",
+        "count_sql": "SELECT COUNT(*) AS row_count FROM asset_name_history",
+        "preview_sql": """
+            SELECT h.asset_id, REPLACE(h.asset_id, 'A_STOCK_', '') AS asset_code,
+                   h.name, h.start_date, h.end_date, h.announcement_date,
+                   h.change_reason, h.is_st_name, h.source, h.created_at
+            FROM asset_name_history h
+            ORDER BY h.start_date DESC, h.asset_id
+            LIMIT ?
+        """,
+    },
     "trading_calendar": {
         "label": "交易日历",
         "description": "交易所开闭市日历，以及前后交易日映射。",
@@ -134,6 +189,18 @@ DATASET_PREVIEWS: dict[str, dict[str, str]] = {
             FROM index_constituents_history c
             LEFT JOIN assets a ON c.asset_id = a.asset_id
             ORDER BY c.date DESC, c.index_id, c.weight DESC
+            LIMIT ?
+        """,
+    },
+    "market_universe_daily": {
+        "label": "沪市历史股票池",
+        "description": "指定交易日沪市存在的证券及交易状态，不等同于官方上证指数历史权重。",
+        "count_sql": "SELECT COUNT(*) AS row_count FROM market_universe_daily",
+        "preview_sql": """
+            SELECT date, asset_id, REPLACE(asset_id, 'A_STOCK_', '') AS asset_code,
+                   asset_name, is_listed, is_tradable, market, source, created_at
+            FROM market_universe_daily
+            ORDER BY date DESC, asset_id
             LIMIT ?
         """,
     },
