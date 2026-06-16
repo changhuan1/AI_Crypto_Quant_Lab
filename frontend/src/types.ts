@@ -161,3 +161,35 @@ export type BacktestResponse = {
   started_at: string;
   finished_at: string;
 };
+
+export type SingleStockPayload = {
+  asset_code: string;
+  start_date: string;
+  end_date: string;
+  initial_cash: number;
+  strategy_mode: "buy_hold" | "ma_filter";
+  target_weight: number;
+  ma_short: number;
+  ma_long: number;
+  fee_rate: number;
+};
+
+export type SingleStockResponse = {
+  run_id: string;
+  asset_id: string;
+  asset_code: string;
+  asset_name: string;
+  strategy_name: string;
+  status: string;
+  data_summary: {
+    rows: number;
+    start_date: string;
+    end_date: string;
+    source: string;
+  };
+  metrics: Record<string, number>;
+  nav: NavRow[];
+  signals: Array<Record<string, unknown>>;
+  orders: Array<Record<string, unknown>>;
+  positions: Array<Record<string, unknown>>;
+};

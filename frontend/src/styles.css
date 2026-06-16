@@ -603,6 +603,18 @@ td {
   gap: 16px;
 }
 
+.single-stock-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.single-stock-form {
+  display: grid;
+  gap: 14px;
+}
+
 .strategy-card {
   padding: 18px;
 }
@@ -784,7 +796,8 @@ select {
   .page-grid.two,
   .table-grid,
   .data-browser-toolbar,
-  .data-pull-form {
+  .data-pull-form,
+  .single-stock-layout {
     grid-template-columns: 1fr;
   }
 }

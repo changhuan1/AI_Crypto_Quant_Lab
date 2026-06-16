@@ -15,8 +15,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from src.backtest.metrics import calculate_metrics
 from src.jobs.init_db import DB_PATH
-from src.platform.backtest_service import run_backtest
+from src.platform.backtest_engine import backtest_target_weights
+from src.platform.backtest_service import _save_successful_run, run_backtest
 from src.platform.data_api import DataPortal
 from src.platform.data_quality import latest_data_quality_report, refresh_data_quality_report
 from src.platform.factor_research import latest_factor_ic_summary
@@ -444,6 +446,18 @@ class AShareDataPullPayload(BaseModel):
     limit: int | None = Field(default=None, ge=1, le=6000)
 
 
+class SingleStockBacktestPayload(BaseModel):
+    asset_code: str = Field(min_length=6, max_length=16)
+    start_date: date
+    end_date: date
+    initial_cash: float = Field(default=100_000.0, ge=1_000)
+    strategy_mode: str = Field(default="ma_filter")
+    target_weight: float = Field(default=0.95, ge=0.01, le=1.0)
+    ma_short: int = Field(default=5, ge=2, le=120)
+    ma_long: int = Field(default=20, ge=3, le=250)
+    fee_rate: float = Field(default=0.001, ge=0.0, le=0.05)
+
+
 @app.on_event("startup")
 def startup() -> None:
     ensure_platform_ready()
@@ -756,9 +770,247 @@ def create_backtest(payload: BacktestPayload) -> dict[str, Any]:
     }
 
 
+@app.post("/api/single-stock/backtests")
+def create_single_stock_backtest(payload: SingleStockBacktestPayload) -> dict[str, Any]:
+    ensure_platform_ready()
+    if payload.start_date > payload.end_date:
+        raise HTTPException(status_code=400, detail="开始日期不能晚于结束日期")
+    if payload.strategy_mode not in {"ma_filter", "buy_hold"}:
+        raise HTTPException(status_code=400, detail="策略模式仅支持 ma_filter 或 buy_hold")
+    if payload.strategy_mode == "ma_filter" and payload.ma_short >= payload.ma_long:
+        raise HTTPException(status_code=400, detail="短均线周期必须小于长均线周期")
+
+    asset_code = _normalize_asset_code(payload.asset_code)
+    asset_id = f"A_STOCK_{asset_code}"
+    prices = _load_single_stock_prices(asset_id, payload.start_date, payload.end_date)
+    if prices.empty:
+        raise HTTPException(status_code=400, detail=f"没有找到 {asset_code} 在所选日期范围内的行情数据")
+    if len(prices) < 2:
+        raise HTTPException(status_code=400, detail="行情数据少于 2 行，无法回测")
+
+    asset = _asset_info(asset_id)
+    signals = _single_stock_signals(prices, asset_id, payload)
+    if signals.empty:
+        raise HTTPException(status_code=400, detail="没有生成任何信号，请扩大日期范围或调整均线参数")
+
+    started_at = datetime.now(timezone.utc)
+    run_id = f"single_{asset_code}_{started_at.strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:6]}"
+    strategy_id = f"single_stock_{asset_code}_{payload.strategy_mode}"
+    strategy_name = f"单股流程 {asset_code} {asset.get('asset_name') or ''}".strip()
+    asset_status = _load_single_stock_status(asset_id, payload.start_date, payload.end_date)
+    ledger = backtest_target_weights(
+        prices=prices,
+        signals=signals,
+        run_id=run_id,
+        strategy_id=strategy_id,
+        initial_cash=payload.initial_cash,
+        fee_rate=payload.fee_rate,
+        asset_status=asset_status,
+        execution_delay_days=1,
+    )
+
+    nav = _attach_single_stock_benchmark(ledger.nav, prices, payload.initial_cash)
+    metrics = calculate_metrics(nav, periods_per_year=252)
+    finished_at = datetime.now(timezone.utc)
+    request = BacktestRequest(
+        strategy_id=strategy_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        initial_cash=payload.initial_cash,
+        config_overrides=payload.dict(),
+    )
+    config = {
+        **payload.dict(),
+        "start_date": payload.start_date.isoformat(),
+        "end_date": payload.end_date.isoformat(),
+    }
+    _save_successful_run(
+        db_path=DB_PATH,
+        run_id=run_id,
+        strategy_id=strategy_id,
+        strategy_name=strategy_name,
+        request=request,
+        config=config,
+        started_at=started_at,
+        finished_at=finished_at,
+        signals=signals,
+        nav=nav,
+        positions=ledger.positions,
+        orders=ledger.orders,
+        trades=ledger.trades,
+        metrics=metrics,
+    )
+
+    return {
+        "run_id": run_id,
+        "asset_id": asset_id,
+        "asset_code": asset_code,
+        "asset_name": asset.get("asset_name") or asset_id,
+        "strategy_name": strategy_name,
+        "status": "success",
+        "data_summary": {
+            "rows": len(prices),
+            "start_date": str(prices["date"].min()),
+            "end_date": str(prices["date"].max()),
+            "source": ", ".join(sorted(str(value) for value in prices["source"].dropna().unique())),
+        },
+        "metrics": {key: _json_value(value) for key, value in metrics.items()},
+        "nav": _records(nav),
+        "signals": _records(signals.tail(80)),
+        "orders": _records(_with_asset_labels(ledger.orders).tail(80)),
+        "positions": _records(_with_asset_labels(ledger.positions).tail(80)),
+    }
+
+
 def _query(sql: str, params: list[Any] | None = None) -> pd.DataFrame:
     with duckdb.connect(str(DB_PATH)) as con:
         return con.execute(sql, params or []).df()
+
+
+def _normalize_asset_code(value: str) -> str:
+    code = value.strip().upper()
+    if "." in code:
+        code = code.split(".")[0]
+    return "".join(character for character in code if character.isdigit()).zfill(6)
+
+
+def _load_single_stock_prices(asset_id: str, start_date: date, end_date: date) -> pd.DataFrame:
+    frame = _query(
+        """
+        SELECT asset_id, date, open, high, low, close, volume, turnover, source, created_at
+        FROM raw_prices_daily
+        WHERE asset_id = ?
+          AND date >= ?
+          AND date <= ?
+        ORDER BY date
+        """,
+        [asset_id, start_date, end_date],
+    )
+    if not frame.empty:
+        return frame
+    return _query(
+        """
+        SELECT asset_id, date, open, high, low, close, volume, turnover, source, created_at
+        FROM prices_daily
+        WHERE asset_id = ?
+          AND date >= ?
+          AND date <= ?
+        ORDER BY date
+        """,
+        [asset_id, start_date, end_date],
+    )
+
+
+def _load_single_stock_status(asset_id: str, start_date: date, end_date: date) -> pd.DataFrame:
+    return _query(
+        """
+        SELECT *
+        FROM asset_status_daily
+        WHERE asset_id = ?
+          AND date >= ?
+          AND date <= ?
+        ORDER BY date
+        """,
+        [asset_id, start_date, end_date],
+    )
+
+
+def _asset_info(asset_id: str) -> dict[str, Any]:
+    frame = _query(
+        """
+        SELECT asset_id, symbol AS asset_code, name AS asset_name, market, asset_type
+        FROM assets
+        WHERE asset_id = ?
+        LIMIT 1
+        """,
+        [asset_id],
+    )
+    return _records(frame)[0] if not frame.empty else {}
+
+
+def _single_stock_signals(
+    prices: pd.DataFrame,
+    asset_id: str,
+    payload: SingleStockBacktestPayload,
+) -> pd.DataFrame:
+    data = prices.sort_values("date").copy()
+    data["date"] = pd.to_datetime(data["date"]).dt.date
+    data["close"] = pd.to_numeric(data["close"], errors="coerce")
+    data["volume"] = pd.to_numeric(data["volume"], errors="coerce")
+    if payload.strategy_mode == "ma_filter":
+        data["ma_short"] = data["close"].rolling(payload.ma_short, min_periods=payload.ma_short).mean()
+        data["ma_long"] = data["close"].rolling(payload.ma_long, min_periods=payload.ma_long).mean()
+        data["target_weight"] = 0.0
+        data.loc[data["ma_short"] > data["ma_long"], "target_weight"] = payload.target_weight
+        data["score"] = data["ma_short"] / data["ma_long"] - 1
+        data["reason"] = [
+            (
+                f"短均线({payload.ma_short})高于长均线({payload.ma_long})，目标仓位={payload.target_weight:.0%}"
+                if weight > 0
+                else f"短均线({payload.ma_short})未高于长均线({payload.ma_long})，空仓"
+            )
+            for weight in data["target_weight"]
+        ]
+        data = data.dropna(subset=["ma_short", "ma_long"])
+    else:
+        data["target_weight"] = payload.target_weight
+        data["score"] = data["close"].pct_change().fillna(0.0)
+        data["reason"] = f"买入并持有，目标仓位={payload.target_weight:.0%}"
+
+    if data.empty:
+        return pd.DataFrame()
+    data["asset_id"] = asset_id
+    data["strategy"] = f"single_stock_{_normalize_asset_code(asset_id)}_{payload.strategy_mode}"
+    data["signal"] = data["target_weight"].apply(lambda value: "target_weight" if value > 0 else "hold_cash")
+    data["risk_flag"] = data["target_weight"] <= 0
+    data["created_at"] = datetime.now(timezone.utc)
+    return data[
+        [
+            "asset_id",
+            "date",
+            "strategy",
+            "score",
+            "signal",
+            "target_weight",
+            "risk_flag",
+            "reason",
+            "created_at",
+        ]
+    ]
+
+
+def _attach_single_stock_benchmark(
+    nav: pd.DataFrame,
+    prices: pd.DataFrame,
+    initial_cash: float,
+) -> pd.DataFrame:
+    if nav.empty:
+        return nav
+    benchmark = prices.sort_values("date")[["date", "close"]].copy()
+    benchmark["date"] = pd.to_datetime(benchmark["date"]).dt.date
+    first_close = benchmark["close"].dropna().iloc[0]
+    benchmark["benchmark_nav"] = benchmark["close"] / first_close * initial_cash
+    return nav.merge(benchmark[["date", "benchmark_nav"]], on="date", how="left")
+
+
+def _with_asset_labels(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty or "asset_id" not in frame.columns:
+        return frame
+    assets = _query(
+        """
+        SELECT asset_id,
+               CASE
+                   WHEN asset_id LIKE 'A_STOCK_%' THEN REPLACE(asset_id, 'A_STOCK_', '')
+                   WHEN asset_id LIKE 'A_INDEX_%' THEN REPLACE(asset_id, 'A_INDEX_', '')
+                   WHEN asset_id LIKE 'A_ETF_%' THEN REPLACE(asset_id, 'A_ETF_', '')
+                   WHEN asset_id LIKE 'CRYPTO_%' THEN REPLACE(asset_id, 'CRYPTO_', '')
+                   ELSE asset_id
+               END AS asset_code,
+               COALESCE(name, asset_id) AS asset_name
+        FROM assets
+        """
+    )
+    return frame.merge(assets, on="asset_id", how="left")
 
 
 def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:

@@ -14,6 +14,8 @@ import type {
   Overview,
   PositionRow,
   RunRow,
+  SingleStockPayload,
+  SingleStockResponse,
   StrategyRow
 } from "./types";
 
@@ -51,6 +53,11 @@ export const api = {
   orders: (runId: string) => request<OrderRow[]>(`/api/runs/${runId}/orders`),
   runBacktest: (payload: BacktestPayload) =>
     request<BacktestResponse>("/api/backtests", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  runSingleStock: (payload: SingleStockPayload) =>
+    request<SingleStockResponse>("/api/single-stock/backtests", {
       method: "POST",
       body: JSON.stringify(payload)
     })

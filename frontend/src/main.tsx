@@ -11,6 +11,7 @@ import {
   LineChart,
   Play,
   RefreshCw,
+  Search,
   ShieldCheck,
   SlidersHorizontal,
   WalletCards
@@ -44,15 +45,18 @@ import type {
   Overview,
   PositionRow,
   RunRow,
+  SingleStockPayload,
+  SingleStockResponse,
   StrategyRow
 } from "./types";
 import "./styles.css";
 
-type Page = "overview" | "data" | "strategies" | "backtest" | "results" | "risk";
+type Page = "overview" | "data" | "singleStock" | "strategies" | "backtest" | "results" | "risk";
 
 const pages: Array<{ id: Page; label: string; icon: React.ReactNode }> = [
   { id: "overview", label: "总览", icon: <LayoutDashboard size={18} /> },
   { id: "data", label: "数据中心", icon: <Database size={18} /> },
+  { id: "singleStock", label: "单股实验室", icon: <Search size={18} /> },
   { id: "strategies", label: "策略中心", icon: <SlidersHorizontal size={18} /> },
   { id: "backtest", label: "回测工作台", icon: <Play size={18} /> },
   { id: "results", label: "绩效分析", icon: <BarChart3 size={18} /> },
@@ -78,6 +82,7 @@ function App() {
   const [nav, setNav] = useState<NavRow[]>([]);
   const [positions, setPositions] = useState<PositionRow[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [singleStockResult, setSingleStockResult] = useState<SingleStockResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string>("");
 
@@ -211,6 +216,20 @@ function App() {
     }
   }
 
+  async function handleRunSingleStock(payload: SingleStockPayload) {
+    setLoading(true);
+    setApiError("");
+    try {
+      const result = await api.runSingleStock(payload);
+      setSingleStockResult(result);
+      await loadBaseData();
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "单股流程运行失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -282,6 +301,13 @@ function App() {
             dataPull={dataPull}
             onStartDataPull={handleStartDataPull}
             onRefreshPreview={() => loadDataPreview()}
+          />
+        )}
+        {page === "singleStock" && (
+          <SingleStockPage
+            result={singleStockResult}
+            onRun={handleRunSingleStock}
+            disabled={loading}
           />
         )}
         {page === "strategies" && <StrategyPage strategies={strategies} factorIc={factorIc} />}
@@ -559,6 +585,199 @@ function DataPage({
         <code>python -m src.jobs.data_quality_update</code>
         <code>python -m src.jobs.factor_research_update</code>
       </div>
+    </section>
+  );
+}
+
+function SingleStockPage({
+  result,
+  onRun,
+  disabled
+}: {
+  result: SingleStockResponse | null;
+  onRun: (payload: SingleStockPayload) => void;
+  disabled: boolean;
+}) {
+  const [payload, setPayload] = useState<SingleStockPayload>({
+    asset_code: "600000",
+    start_date: "2026-06-01",
+    end_date: "2026-06-05",
+    initial_cash: 100000,
+    strategy_mode: "buy_hold",
+    target_weight: 0.95,
+    ma_short: 5,
+    ma_long: 20,
+    fee_rate: 0.001
+  });
+  const metricMap = result?.metrics ?? {};
+
+  return (
+    <section className="page-grid single">
+      <div className="panel">
+        <PanelHeader title="单股完整流程" action={result?.run_id ?? "未运行"} />
+        <div className="single-stock-layout">
+          <div className="single-stock-form">
+            <label>
+              股票代码
+              <input
+                value={payload.asset_code}
+                onChange={(event) => setPayload({ ...payload, asset_code: event.target.value })}
+                placeholder="例如 600000"
+              />
+            </label>
+            <label>
+              策略模式
+              <select
+                value={payload.strategy_mode}
+                onChange={(event) =>
+                  setPayload({ ...payload, strategy_mode: event.target.value as SingleStockPayload["strategy_mode"] })
+                }
+              >
+                <option value="buy_hold">买入并持有</option>
+                <option value="ma_filter">均线过滤持有</option>
+              </select>
+            </label>
+            <div className="form-row">
+              <label>
+                开始日期
+                <input
+                  type="date"
+                  value={payload.start_date}
+                  onChange={(event) => setPayload({ ...payload, start_date: event.target.value })}
+                />
+              </label>
+              <label>
+                结束日期
+                <input
+                  type="date"
+                  value={payload.end_date}
+                  onChange={(event) => setPayload({ ...payload, end_date: event.target.value })}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                初始资金
+                <input
+                  type="number"
+                  value={payload.initial_cash}
+                  onChange={(event) => setPayload({ ...payload, initial_cash: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                目标仓位
+                <input
+                  type="number"
+                  min="0.01"
+                  max="1"
+                  step="0.05"
+                  value={payload.target_weight}
+                  onChange={(event) => setPayload({ ...payload, target_weight: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                短均线
+                <input
+                  type="number"
+                  value={payload.ma_short}
+                  onChange={(event) => setPayload({ ...payload, ma_short: Number(event.target.value) })}
+                  disabled={payload.strategy_mode !== "ma_filter"}
+                />
+              </label>
+              <label>
+                长均线
+                <input
+                  type="number"
+                  value={payload.ma_long}
+                  onChange={(event) => setPayload({ ...payload, ma_long: Number(event.target.value) })}
+                  disabled={payload.strategy_mode !== "ma_filter"}
+                />
+              </label>
+            </div>
+            <label>
+              交易费率
+              <input
+                type="number"
+                step="0.0005"
+                value={payload.fee_rate}
+                onChange={(event) => setPayload({ ...payload, fee_rate: Number(event.target.value) })}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={disabled || !payload.asset_code || !payload.start_date || !payload.end_date}
+              onClick={() => onRun(payload)}
+            >
+              <Play size={18} />
+              运行单股流程
+            </button>
+          </div>
+          <div className="preview-ladder">
+            {["读取单股行情", "生成单股信号", "按 T+1 撮合", "保存回测账本", "展示净值与订单"].map(
+              (step, index) => (
+                <div key={step}>
+                  <span>{index + 1}</span>
+                  <strong>{step}</strong>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+      </div>
+
+      {result && (
+        <>
+          <div className="metric-row compact">
+            <MetricCard label="股票" value={`${result.asset_code} ${result.asset_name}`} icon={<Search />} />
+            <MetricCard label="行情行数" value={result.data_summary.rows.toLocaleString()} icon={<Database />} />
+            <MetricCard label="总收益" value={formatPct(metricMap.total_return)} icon={<BarChart3 />} />
+            <MetricCard label="最大回撤" value={formatPct(metricMap.max_drawdown)} icon={<Gauge />} />
+          </div>
+
+          <div className="panel">
+            <PanelHeader
+              title="单股净值"
+              action={`${cleanDate(result.data_summary.start_date)} 至 ${cleanDate(result.data_summary.end_date)}`}
+            />
+            <NavChart nav={result.nav} />
+          </div>
+
+          <div className="table-grid">
+            <div className="panel">
+              <PanelHeader title="最近信号" action={`${result.signals.length} 条`} />
+              <DataTable
+                columns={["日期", "信号", "目标仓位", "评分", "原因"]}
+                rows={result.signals.slice(-20).reverse().map((row) => [
+                  cleanDate(String(row.date ?? "")),
+                  String(row.signal ?? ""),
+                  formatPct(Number(row.target_weight ?? 0)),
+                  formatNumber(Number(row.score ?? 0)),
+                  String(row.reason ?? "")
+                ])}
+              />
+            </div>
+            <div className="panel">
+              <PanelHeader title="订单明细" action={`${result.orders.length} 条`} />
+              <DataTable
+                columns={["日期", "状态", "方向", "代码", "名称", "数量", "价格", "金额", "原因"]}
+                rows={result.orders.slice(-20).reverse().map((row) => [
+                  cleanDate(String(row.date ?? "")),
+                  String(row.status ?? ""),
+                  String(row.side ?? ""),
+                  String(row.asset_code ?? result.asset_code),
+                  String(row.asset_name ?? result.asset_name),
+                  formatNumber(Number(row.quantity ?? 0)),
+                  formatNumber(Number(row.price ?? 0)),
+                  formatMoney(Number(row.notional ?? 0)),
+                  String(row.reason ?? "")
+                ])}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }
