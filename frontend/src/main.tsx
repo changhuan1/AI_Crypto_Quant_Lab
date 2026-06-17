@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
   Activity,
@@ -43,20 +43,45 @@ import type {
   NavRow,
   OrderRow,
   Overview,
+  PlatformReadiness,
   PositionRow,
+  PortfolioPayload,
+  PortfolioResponse,
   RunRow,
   SingleStockPayload,
+  SingleStockPriceRow,
+  SingleStockProfile,
   SingleStockResponse,
+  SingleStockStrategyScript,
   StrategyRow
 } from "./types";
 import "./styles.css";
 
-type Page = "overview" | "data" | "singleStock" | "strategies" | "backtest" | "results" | "risk";
+type Page = "overview" | "data" | "singleStock" | "portfolio" | "strategies" | "backtest" | "results" | "risk";
+
+const DEFAULT_SINGLE_STOCK_START_DATE = "2025-01-01";
+const DEFAULT_SINGLE_STOCK_CODE = `def generate_signals(context):
+    prices = context["prices"].copy()
+    target_weight = context.get("target_weight", 0.95)
+
+    prices["ma5"] = prices["close"].rolling(5).mean()
+    prices["ma20"] = prices["close"].rolling(20).mean()
+    prices["target_weight"] = 0.0
+    prices.loc[prices["ma5"] > prices["ma20"], "target_weight"] = target_weight
+    prices["signal"] = prices["target_weight"].apply(lambda weight: "target_weight" if weight > 0 else "hold_cash")
+    prices["score"] = (prices["ma5"] / prices["ma20"] - 1).fillna(0.0)
+    prices["reason"] = prices["signal"].map({
+        "target_weight": "5日均线高于20日均线，持有目标仓位",
+        "hold_cash": "5日均线未高于20日均线，空仓"
+    })
+    return prices[["date", "signal", "target_weight", "score", "reason"]].dropna()
+`;
 
 const pages: Array<{ id: Page; label: string; icon: React.ReactNode }> = [
   { id: "overview", label: "总览", icon: <LayoutDashboard size={18} /> },
   { id: "data", label: "数据中心", icon: <Database size={18} /> },
   { id: "singleStock", label: "单股实验室", icon: <Search size={18} /> },
+  { id: "portfolio", label: "组合实验室", icon: <WalletCards size={18} /> },
   { id: "strategies", label: "策略中心", icon: <SlidersHorizontal size={18} /> },
   { id: "backtest", label: "回测工作台", icon: <Play size={18} /> },
   { id: "results", label: "绩效分析", icon: <BarChart3 size={18} /> },
@@ -74,6 +99,7 @@ function App() {
   const [dataPreview, setDataPreview] = useState<DataPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [dataPull, setDataPull] = useState<DataPullStatus | null>(null);
+  const [readiness, setReadiness] = useState<PlatformReadiness | null>(null);
   const [factorIc, setFactorIc] = useState<FactorIcRow[]>([]);
   const [strategies, setStrategies] = useState<StrategyRow[]>([]);
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -83,6 +109,7 @@ function App() {
   const [positions, setPositions] = useState<PositionRow[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [singleStockResult, setSingleStockResult] = useState<SingleStockResponse | null>(null);
+  const [portfolioResult, setPortfolioResult] = useState<PortfolioResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string>("");
 
@@ -96,11 +123,12 @@ function App() {
     setLoading(true);
     setApiError("");
     try {
-      const [overviewData, coverageData, qualityData, catalogData, factorIcData, strategiesData, runsData] = await Promise.all([
+      const [overviewData, coverageData, qualityData, catalogData, readinessData, factorIcData, strategiesData, runsData] = await Promise.all([
         api.overview(),
         api.coverage(),
         api.dataQuality(),
         api.dataCatalog(),
+        api.platformReadiness(),
         api.factorIc(),
         api.strategies(),
         api.runs()
@@ -109,6 +137,7 @@ function App() {
       setCoverage(coverageData);
       setDataQuality(qualityData);
       setDataCatalog(catalogData);
+      setReadiness(readinessData);
       setFactorIc(factorIcData);
       setStrategies(strategiesData);
       setRuns(runsData);
@@ -230,6 +259,20 @@ function App() {
     }
   }
 
+  async function handleRunPortfolio(payload: PortfolioPayload) {
+    setLoading(true);
+    setApiError("");
+    try {
+      const result = await api.runPortfolio(payload);
+      setPortfolioResult(result);
+      await loadBaseData();
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "组合流程运行失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -299,6 +342,7 @@ function App() {
             dataPreview={dataPreview}
             previewLoading={previewLoading}
             dataPull={dataPull}
+            readiness={readiness}
             onStartDataPull={handleStartDataPull}
             onRefreshPreview={() => loadDataPreview()}
           />
@@ -307,6 +351,13 @@ function App() {
           <SingleStockPage
             result={singleStockResult}
             onRun={handleRunSingleStock}
+            disabled={loading}
+          />
+        )}
+        {page === "portfolio" && (
+          <PortfolioPage
+            result={portfolioResult}
+            onRun={handleRunPortfolio}
             disabled={loading}
           />
         )}
@@ -396,6 +447,7 @@ function DataPage({
   dataPreview,
   previewLoading,
   dataPull,
+  readiness,
   onStartDataPull,
   onRefreshPreview
 }: {
@@ -409,6 +461,7 @@ function DataPage({
   dataPreview: DataPreview | null;
   previewLoading: boolean;
   dataPull: DataPullStatus | null;
+  readiness: PlatformReadiness | null;
   onStartDataPull: (payload: AShareDataPullPayload) => void;
   onRefreshPreview: () => void;
 }) {
@@ -576,6 +629,29 @@ function DataPage({
           ])}
         />
       </div>
+      <div className="panel">
+        <PanelHeader title="平台就绪检查" action={readiness ? "已启用" : "未加载"} />
+        <div className="readiness-grid">
+          <div>
+            <strong>核心数据</strong>
+            {(readiness?.datasets ?? []).slice(0, 8).map((row) => (
+              <KpiLine key={row.dataset} label={row.label} value={`${row.row_count.toLocaleString()} 行`} />
+            ))}
+          </div>
+          <div>
+            <strong>交易规则</strong>
+            {(readiness?.rules ?? []).map((rule) => (
+              <div className="rule-line" key={rule.name}>
+                <span className="status-pill">{rule.status}</span>
+                <div>
+                  <b>{rule.name}</b>
+                  <small>{rule.description}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
       <div className="command-panel">
         <strong>后台数据准备</strong>
         <code>python -m src.jobs.init_db</code>
@@ -600,8 +676,8 @@ function SingleStockPage({
 }) {
   const [payload, setPayload] = useState<SingleStockPayload>({
     asset_code: "600000",
-    start_date: "2026-06-01",
-    end_date: "2026-06-05",
+    start_date: DEFAULT_SINGLE_STOCK_START_DATE,
+    end_date: new Date().toISOString().slice(0, 10),
     initial_cash: 100000,
     strategy_mode: "buy_hold",
     target_weight: 0.95,
@@ -609,7 +685,160 @@ function SingleStockPage({
     ma_long: 20,
     fee_rate: 0.001
   });
+  const [profile, setProfile] = useState<SingleStockProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [pricePullLoading, setPricePullLoading] = useState(false);
+  const [pricePullMessage, setPricePullMessage] = useState("");
+  const lastAutoPullKey = useRef("");
+  const [strategyScripts, setStrategyScripts] = useState<SingleStockStrategyScript[]>([]);
+  const [selectedScriptId, setSelectedScriptId] = useState<string>("template_ma_cross");
+  const [customStrategyName, setCustomStrategyName] = useState("我的单股策略");
+  const [strategyCode, setStrategyCode] = useState(DEFAULT_SINGLE_STOCK_CODE);
+  const [strategySaveMessage, setStrategySaveMessage] = useState("");
+  const [showTradeDaysOnly, setShowTradeDaysOnly] = useState(false);
   const metricMap = result?.metrics ?? {};
+
+  async function loadProfile() {
+    const assetCode = payload.asset_code.trim();
+    if (assetCode.length < 6) {
+      setProfile(null);
+      return;
+    }
+    setProfileLoading(true);
+    try {
+      const data = await api.singleStockProfile(assetCode, payload.start_date, payload.end_date, 500);
+      setProfile(data);
+    } catch {
+      setProfile(null);
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    const assetCode = payload.asset_code.trim();
+    if (assetCode.length < 6) {
+      setProfile(null);
+      return;
+    }
+    setProfileLoading(true);
+    api
+      .singleStockProfile(assetCode, payload.start_date, payload.end_date, 500)
+      .then((data) => {
+        if (active) setProfile(data);
+      })
+      .catch(() => {
+        if (active) setProfile(null);
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [payload.asset_code, payload.start_date, payload.end_date]);
+
+  useEffect(() => {
+    api
+      .singleStockStrategyScripts()
+      .then((scripts) => {
+        setStrategyScripts(scripts);
+        const firstScript = scripts[0];
+        if (firstScript) {
+          setSelectedScriptId(firstScript.script_id);
+          setCustomStrategyName(firstScript.is_template ? "我的单股策略" : firstScript.name);
+          setStrategyCode(firstScript.code);
+        }
+      })
+      .catch(() => {
+        setStrategyScripts([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    const assetCode = payload.asset_code.trim();
+    if (assetCode.length < 6 || !payload.start_date || !payload.end_date) return;
+    const key = `${assetCode}|${payload.start_date}|${payload.end_date}`;
+    if (key === lastAutoPullKey.current) return;
+
+    const timer = window.setTimeout(() => {
+      autoPullPrices(key);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [payload.asset_code, payload.start_date, payload.end_date]);
+
+  async function autoPullPrices(key: string) {
+    const assetCode = payload.asset_code.trim();
+    if (assetCode.length < 6 || !payload.start_date || !payload.end_date) return;
+    lastAutoPullKey.current = key;
+    setPricePullLoading(true);
+    setPricePullMessage("正在自动拉取所选日期范围的行情...");
+    try {
+      const data = await api.pullSingleStockPrices(assetCode, payload.start_date, payload.end_date);
+      setProfile(data);
+      setPricePullMessage(data.message ?? `已自动拉取 ${data.selected.rows} 条行情`);
+      await loadProfile();
+    } catch (error) {
+      lastAutoPullKey.current = "";
+      setPricePullMessage(error instanceof Error ? error.message : "自动拉取行情失败");
+    } finally {
+      setPricePullLoading(false);
+    }
+  }
+
+  function handleSelectScript(scriptId: string) {
+    setSelectedScriptId(scriptId);
+    if (scriptId === "__new__") {
+      setCustomStrategyName("我的单股策略");
+      setStrategyCode(DEFAULT_SINGLE_STOCK_CODE);
+      return;
+    }
+    const script = strategyScripts.find((item) => item.script_id === scriptId);
+    if (!script) return;
+    setCustomStrategyName(script.is_template ? "我的单股策略" : script.name);
+    setStrategyCode(script.code);
+  }
+
+  async function handleSaveStrategyCode() {
+    setStrategySaveMessage("");
+    try {
+      const saved = await api.saveSingleStockStrategyScript({
+        script_id: selectedScriptId && selectedScriptId !== "__new__" && !selectedScriptId.startsWith("template_")
+          ? selectedScriptId
+          : null,
+        name: customStrategyName,
+        code: strategyCode
+      });
+      const scripts = await api.singleStockStrategyScripts();
+      setStrategyScripts(scripts);
+      setSelectedScriptId(saved.script_id);
+      setStrategySaveMessage(`已保存：${saved.name}`);
+    } catch (error) {
+      setStrategySaveMessage(error instanceof Error ? error.message : "策略保存失败");
+    }
+  }
+
+  function runSingleStockWorkflow() {
+    onRun({
+      ...payload,
+      strategy_code: payload.strategy_mode === "custom_code" ? strategyCode : null,
+      strategy_script_id: payload.strategy_mode === "custom_code" ? selectedScriptId : null,
+      custom_strategy_name: payload.strategy_mode === "custom_code" ? customStrategyName : null
+    });
+  }
+
+  const dailyLedger = result?.daily_ledger ?? [];
+  const tradeDayLedger = dailyLedger.filter((row) => {
+    const buyQuantity = Number(row.buy_quantity ?? 0);
+    const sellQuantity = Number(row.sell_quantity ?? 0);
+    const buyAmount = Number(row.buy_amount ?? 0);
+    const sellAmount = Number(row.sell_amount ?? 0);
+    const filledOrders = Number(row.filled_orders ?? 0);
+    const rejectedOrders = Number(row.rejected_orders ?? 0);
+    return buyQuantity > 0 || sellQuantity > 0 || buyAmount > 0 || sellAmount > 0 || filledOrders > 0 || rejectedOrders > 0;
+  });
+  const visibleDailyLedger = showTradeDaysOnly ? tradeDayLedger : dailyLedger;
 
   return (
     <section className="page-grid single">
@@ -635,8 +864,53 @@ function SingleStockPage({
               >
                 <option value="buy_hold">买入并持有</option>
                 <option value="ma_filter">均线过滤持有</option>
+                <option value="custom_code">代码策略</option>
               </select>
             </label>
+            {payload.strategy_mode === "custom_code" && (
+              <div className="strategy-code-panel">
+                <div className="form-row">
+                  <label>
+                    已保存策略
+                    <select value={selectedScriptId} onChange={(event) => handleSelectScript(event.target.value)}>
+                      <option value="__new__">新建策略</option>
+                      {strategyScripts.map((script) => (
+                        <option value={script.script_id} key={script.script_id}>
+                          {script.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    策略名称
+                    <input
+                      value={customStrategyName}
+                      onChange={(event) => setCustomStrategyName(event.target.value)}
+                      placeholder="例如 我的均线策略"
+                    />
+                  </label>
+                </div>
+                <label>
+                  策略代码
+                  <textarea
+                    className="strategy-code-editor"
+                    value={strategyCode}
+                    onChange={(event) => setStrategyCode(event.target.value)}
+                    spellCheck={false}
+                  />
+                </label>
+                <div className="strategy-code-help">
+                  必须定义 <code>generate_signals(context)</code>，返回包含 <code>date</code> 和{" "}
+                  <code>target_weight</code> 的 DataFrame 或列表；可选字段有 <code>signal</code>、<code>score</code>、
+                  <code>reason</code>。
+                </div>
+                <button className="secondary-button" type="button" onClick={handleSaveStrategyCode}>
+                  <Download size={18} />
+                  保存策略代码
+                </button>
+                {strategySaveMessage && <div className="inline-message">{strategySaveMessage}</div>}
+              </div>
+            )}
             <div className="form-row">
               <label>
                 开始日期
@@ -676,26 +950,26 @@ function SingleStockPage({
                 />
               </label>
             </div>
-            <div className="form-row">
-              <label>
-                短均线
-                <input
-                  type="number"
-                  value={payload.ma_short}
-                  onChange={(event) => setPayload({ ...payload, ma_short: Number(event.target.value) })}
-                  disabled={payload.strategy_mode !== "ma_filter"}
-                />
-              </label>
-              <label>
-                长均线
-                <input
-                  type="number"
-                  value={payload.ma_long}
-                  onChange={(event) => setPayload({ ...payload, ma_long: Number(event.target.value) })}
-                  disabled={payload.strategy_mode !== "ma_filter"}
-                />
-              </label>
-            </div>
+            {payload.strategy_mode === "ma_filter" && (
+              <div className="form-row">
+                <label>
+                  短均线
+                  <input
+                    type="number"
+                    value={payload.ma_short}
+                    onChange={(event) => setPayload({ ...payload, ma_short: Number(event.target.value) })}
+                  />
+                </label>
+                <label>
+                  长均线
+                  <input
+                    type="number"
+                    value={payload.ma_long}
+                    onChange={(event) => setPayload({ ...payload, ma_long: Number(event.target.value) })}
+                  />
+                </label>
+              </div>
+            )}
             <label>
               交易费率
               <input
@@ -705,24 +979,39 @@ function SingleStockPage({
                 onChange={(event) => setPayload({ ...payload, fee_rate: Number(event.target.value) })}
               />
             </label>
-            <button
-              className="primary-button"
-              disabled={disabled || !payload.asset_code || !payload.start_date || !payload.end_date}
-              onClick={() => onRun(payload)}
-            >
-              <Play size={18} />
-              运行单股流程
-            </button>
+            <div className="button-row">
+              <button
+                className="primary-button"
+                disabled={disabled || !payload.asset_code || !payload.start_date || !payload.end_date}
+                onClick={runSingleStockWorkflow}
+              >
+                <Play size={18} />
+                运行单股流程
+              </button>
+            </div>
+            {(pricePullLoading || pricePullMessage) && <div className="inline-message">{pricePullMessage}</div>}
           </div>
-          <div className="preview-ladder">
-            {["读取单股行情", "生成单股信号", "按 T+1 撮合", "保存回测账本", "展示净值与订单"].map(
-              (step, index) => (
-                <div key={step}>
-                  <span>{index + 1}</span>
-                  <strong>{step}</strong>
-                </div>
-              )
-            )}
+          <div className="single-stock-preview">
+            <PanelHeader
+              title="行情预览"
+              action={profileLoading ? "读取中" : `${profile?.selected.rows ?? 0} 条`}
+            />
+            <div className="stock-profile-strip">
+              <KpiLine
+                label="股票"
+                value={profile ? `${profile.asset_code} ${profile.asset_name}` : payload.asset_code}
+              />
+              <KpiLine
+                label="完整数据范围"
+                value={
+                  profile?.coverage.start_date
+                    ? `${cleanDate(profile.coverage.start_date)} 至 ${cleanDate(profile.coverage.end_date)}`
+                    : "暂无"
+                }
+              />
+              <KpiLine label="数据源" value={profile?.coverage.source ?? "-"} />
+            </div>
+            <CandlestickChart prices={profile?.prices ?? []} orders={result?.orders ?? []} />
           </div>
         </div>
       </div>
@@ -744,34 +1033,272 @@ function SingleStockPage({
             <NavChart nav={result.nav} />
           </div>
 
+          <div className="panel">
+            <PanelHeader
+              title="每日交易账本"
+              action={
+                <label className="compact-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showTradeDaysOnly}
+                    onChange={(event) => setShowTradeDaysOnly(event.target.checked)}
+                  />
+                  只看有交易日
+                  <span>
+                    {visibleDailyLedger.length}/{dailyLedger.length} 日
+                  </span>
+                </label>
+              }
+            />
+            <DataTable
+              columns={[
+                "日期",
+                "总资产",
+                "现金",
+                "持仓市值",
+                "持仓股数",
+                "收盘价",
+                "仓位",
+                "买入股数",
+                "卖出股数",
+                "买入金额",
+                "卖出金额",
+                "手续费",
+                "成交单",
+                "拒单"
+              ]}
+              rows={[...visibleDailyLedger].reverse().map((row) => [
+                cleanDate(String(row.date ?? "")),
+                formatMoney(Number(row.nav ?? 0)),
+                formatMoney(Number(row.cash ?? 0)),
+                formatMoney(Number(row.position_value ?? 0)),
+                formatMoney(Number(row.position_quantity ?? 0)),
+                formatNumber(Number(row.close_price ?? 0)),
+                formatPct(Number(row.position_weight ?? row.gross_exposure ?? 0)),
+                formatMoney(Number(row.buy_quantity ?? 0)),
+                formatMoney(Number(row.sell_quantity ?? 0)),
+                formatMoney(Number(row.buy_amount ?? 0)),
+                formatMoney(Number(row.sell_amount ?? 0)),
+                formatMoney(Number(row.fee ?? 0)),
+                String(row.filled_orders ?? 0),
+                String(row.rejected_orders ?? 0)
+              ])}
+            />
+          </div>
+
+        </>
+      )}
+    </section>
+  );
+}
+
+function PortfolioPage({
+  result,
+  onRun,
+  disabled
+}: {
+  result: PortfolioResponse | null;
+  onRun: (payload: PortfolioPayload) => void;
+  disabled: boolean;
+}) {
+  const [payload, setPayload] = useState<PortfolioPayload>({
+    start_date: "2025-01-01",
+    end_date: new Date().toISOString().slice(0, 10),
+    initial_cash: 100000,
+    universe_limit: 80,
+    top_n: 10,
+    lookback_days: 60,
+    rebalance_days: 20,
+    max_single_position: 0.1,
+    fee_rate: 0.001
+  });
+  const metricMap = result?.metrics ?? {};
+  const latestPositionDate = result?.positions?.reduce((latest, row) => {
+    const rowDate = cleanDate(String(row.date ?? ""));
+    return rowDate > latest ? rowDate : latest;
+  }, "");
+  const latestPositions = (result?.positions ?? [])
+    .filter((row) => cleanDate(String(row.date ?? "")) === latestPositionDate)
+    .slice(0, 30);
+  const tradeLedger = (result?.daily_ledger ?? []).filter((row) => {
+    const buyAmount = Number(row.buy_amount ?? 0);
+    const sellAmount = Number(row.sell_amount ?? 0);
+    const filledOrders = Number(row.filled_orders ?? 0);
+    const rejectedOrders = Number(row.rejected_orders ?? 0);
+    return buyAmount > 0 || sellAmount > 0 || filledOrders > 0 || rejectedOrders > 0;
+  });
+
+  return (
+    <section className="page-grid single">
+      <div className="panel">
+        <PanelHeader title="组合策略实验室" action={result?.run_id ?? "未运行"} />
+        <div className="portfolio-layout">
+          <div className="single-stock-form">
+            <div className="form-row">
+              <label>
+                开始日期
+                <input
+                  type="date"
+                  value={payload.start_date}
+                  onChange={(event) => setPayload({ ...payload, start_date: event.target.value })}
+                />
+              </label>
+              <label>
+                结束日期
+                <input
+                  type="date"
+                  value={payload.end_date}
+                  onChange={(event) => setPayload({ ...payload, end_date: event.target.value })}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                初始资金
+                <input
+                  type="number"
+                  value={payload.initial_cash}
+                  onChange={(event) => setPayload({ ...payload, initial_cash: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                股票池数量
+                <input
+                  type="number"
+                  min="5"
+                  max="600"
+                  value={payload.universe_limit}
+                  onChange={(event) => setPayload({ ...payload, universe_limit: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                持仓数量
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={payload.top_n}
+                  onChange={(event) => setPayload({ ...payload, top_n: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                单股上限
+                <input
+                  type="number"
+                  min="0.001"
+                  max="1"
+                  step="0.01"
+                  value={payload.max_single_position}
+                  onChange={(event) => setPayload({ ...payload, max_single_position: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                动量窗口
+                <input
+                  type="number"
+                  min="5"
+                  max="250"
+                  value={payload.lookback_days}
+                  onChange={(event) => setPayload({ ...payload, lookback_days: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                调仓周期
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={payload.rebalance_days}
+                  onChange={(event) => setPayload({ ...payload, rebalance_days: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+            <label>
+              交易费率
+              <input
+                type="number"
+                step="0.0005"
+                value={payload.fee_rate}
+                onChange={(event) => setPayload({ ...payload, fee_rate: Number(event.target.value) })}
+              />
+            </label>
+            <button
+              className="primary-button"
+              disabled={disabled || !payload.start_date || !payload.end_date}
+              onClick={() => onRun(payload)}
+            >
+              <Play size={18} />
+              运行组合回测
+            </button>
+          </div>
+          <div className="strategy-brief">
+            <strong>当前内置策略：A股动量轮动</strong>
+            <p>
+              系统在每个调仓日计算过去 N 个交易日涨跌幅，选出排名靠前的股票，按等权和单股上限生成目标仓位，再经过
+              T+1、整手、涨跌停、停牌/ST、费用规则撮合。
+            </p>
+            <div className="rule-line">
+              <span className="status-pill">enabled</span>
+              <div>
+                <b>从单股走向组合</b>
+                <small>这里是未来全市场选股、因子打分、行业约束和参数优化的入口。</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {result && (
+        <>
+          <div className="metric-row compact">
+            <MetricCard label="股票池" value={`${result.data_summary.asset_count} 只`} icon={<Database />} />
+            <MetricCard label="总收益" value={formatPct(metricMap.total_return)} icon={<BarChart3 />} />
+            <MetricCard label="最大回撤" value={formatPct(metricMap.max_drawdown)} icon={<Gauge />} />
+            <MetricCard label="夏普比率" value={formatNumber(metricMap.sharpe)} icon={<Activity />} />
+          </div>
+          <div className="panel">
+            <PanelHeader
+              title="组合净值"
+              action={`${cleanDate(result.data_summary.start_date)} 至 ${cleanDate(result.data_summary.end_date)}`}
+            />
+            <NavChart nav={result.nav} />
+          </div>
           <div className="table-grid">
             <div className="panel">
-              <PanelHeader title="最近信号" action={`${result.signals.length} 条`} />
+              <PanelHeader title="最新持仓" action={`${latestPositions.length} 只`} />
               <DataTable
-                columns={["日期", "信号", "目标仓位", "评分", "原因"]}
-                rows={result.signals.slice(-20).reverse().map((row) => [
+                columns={["日期", "代码", "名称", "股数", "收盘价", "市值", "权重"]}
+                rows={latestPositions.map((row) => [
                   cleanDate(String(row.date ?? "")),
-                  String(row.signal ?? ""),
-                  formatPct(Number(row.target_weight ?? 0)),
-                  formatNumber(Number(row.score ?? 0)),
-                  String(row.reason ?? "")
+                  String(row.asset_code ?? ""),
+                  String(row.asset_name ?? ""),
+                  formatMoney(Number(row.quantity ?? 0)),
+                  formatNumber(Number(row.close_price ?? 0)),
+                  formatMoney(Number(row.market_value ?? 0)),
+                  formatPct(Number(row.weight ?? 0))
                 ])}
               />
             </div>
             <div className="panel">
-              <PanelHeader title="订单明细" action={`${result.orders.length} 条`} />
+              <PanelHeader title="调仓账本" action={`${tradeLedger.length}/${result.daily_ledger.length} 日`} />
               <DataTable
-                columns={["日期", "状态", "方向", "代码", "名称", "数量", "价格", "金额", "原因"]}
-                rows={result.orders.slice(-20).reverse().map((row) => [
+                columns={["日期", "总资产", "现金", "持仓市值", "仓位", "持仓数", "买入", "卖出", "费用", "成交单", "拒单"]}
+                rows={[...tradeLedger].reverse().map((row) => [
                   cleanDate(String(row.date ?? "")),
-                  String(row.status ?? ""),
-                  String(row.side ?? ""),
-                  String(row.asset_code ?? result.asset_code),
-                  String(row.asset_name ?? result.asset_name),
-                  formatNumber(Number(row.quantity ?? 0)),
-                  formatNumber(Number(row.price ?? 0)),
-                  formatMoney(Number(row.notional ?? 0)),
-                  String(row.reason ?? "")
+                  formatMoney(Number(row.nav ?? 0)),
+                  formatMoney(Number(row.cash ?? 0)),
+                  formatMoney(Number(row.position_value ?? 0)),
+                  formatPct(Number(row.gross_exposure ?? 0)),
+                  String(row.holding_count ?? 0),
+                  formatMoney(Number(row.buy_amount ?? 0)),
+                  formatMoney(Number(row.sell_amount ?? 0)),
+                  formatMoney(Number(row.fee ?? 0)),
+                  String(row.filled_orders ?? 0),
+                  String(row.rejected_orders ?? 0)
                 ])}
               />
             </div>
@@ -1129,6 +1656,321 @@ function NavChart({ nav }: { nav: NavRow[] }) {
           />
         </ReLineChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CandlestickChart({ prices, orders = [] }: { prices: SingleStockPriceRow[]; orders?: Array<Record<string, unknown>> }) {
+  const allRows = prices.filter(
+    (row) =>
+      row.open !== null &&
+      row.high !== null &&
+      row.low !== null &&
+      row.close !== null &&
+      Number.isFinite(row.open) &&
+      Number.isFinite(row.high) &&
+      Number.isFinite(row.low) &&
+      Number.isFinite(row.close)
+  );
+  const [visibleCount, setVisibleCount] = useState(120);
+  const [endIndex, setEndIndex] = useState(allRows.length);
+  const [dragState, setDragState] = useState<{ x: number; endIndex: number } | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const dragMovedRef = useRef(false);
+
+  useEffect(() => {
+    setVisibleCount(Math.min(120, Math.max(20, allRows.length)));
+    setEndIndex(allRows.length);
+  }, [allRows.length]);
+
+  if (!allRows.length) {
+    return <div className="empty-state">暂无行情数据，请先在数据中心拉取这只股票的历史日线</div>;
+  }
+
+  const minVisible = Math.min(20, allRows.length);
+  const maxVisible = Math.min(240, allRows.length);
+  const safeVisibleCount = Math.min(Math.max(visibleCount, minVisible), maxVisible);
+  const safeEndIndex = Math.min(Math.max(endIndex, safeVisibleCount), allRows.length);
+  const startIndex = Math.max(0, safeEndIndex - safeVisibleCount);
+  const rows = allRows.slice(startIndex, safeEndIndex);
+  const selectedRow = rows.find((row) => cleanDate(row.date) === selectedDate) ?? rows[rows.length - 1];
+  const selectedIndex = allRows.findIndex((row) => cleanDate(row.date) === cleanDate(selectedRow.date));
+  const previousClose =
+    selectedIndex > 0 && allRows[selectedIndex - 1].close !== null ? Number(allRows[selectedIndex - 1].close) : null;
+  const selectedClose = Number(selectedRow.close);
+  const selectedChange = previousClose === null ? null : selectedClose - previousClose;
+  const selectedPctChange = previousClose === null || previousClose === 0 ? null : selectedChange! / previousClose;
+  const movingAverages = [
+    { label: "MA5", window: 5, color: "#c27a1a" },
+    { label: "MA10", window: 10, color: "#2563eb" },
+    { label: "MA20", window: 20, color: "#7c3aed" }
+  ].map((item) => ({
+    ...item,
+    values: allRows.map((_, index) => {
+      const start = index - item.window + 1;
+      if (start < 0) return null;
+      const slice = allRows.slice(start, index + 1);
+      return slice.reduce((sum, row) => sum + Number(row.close), 0) / item.window;
+    })
+  }));
+
+  function setWindow(nextVisibleCount: number, nextEndIndex = safeEndIndex) {
+    const count = Math.min(Math.max(nextVisibleCount, minVisible), maxVisible);
+    const nextEnd = Math.min(Math.max(nextEndIndex, count), allRows.length);
+    setVisibleCount(count);
+    setEndIndex(nextEnd);
+  }
+
+  function pointerRatio(clientX: number, element: HTMLElement) {
+    const rect = element.getBoundingClientRect();
+    const ratio = (clientX - rect.left) / Math.max(rect.width, 1);
+    return Math.min(Math.max(ratio, 0), 1);
+  }
+
+  function zoom(multiplier: number, anchorRatio = 1) {
+    const nextCount = Math.round(safeVisibleCount * multiplier);
+    const count = Math.min(Math.max(nextCount, minVisible), maxVisible);
+    const anchorIndex = startIndex + anchorRatio * safeVisibleCount;
+    const nextStart = Math.round(anchorIndex - anchorRatio * count);
+    setWindow(count, nextStart + count);
+  }
+
+  function handleWheel(event: React.WheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    zoom(event.deltaY > 0 ? 1.15 : 0.85, pointerRatio(event.clientX, event.currentTarget));
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragMovedRef.current = false;
+    setDragState({ x: event.clientX, endIndex: safeEndIndex });
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!dragState) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const candlePixelWidth = Math.max(rect.width / safeVisibleCount, 1);
+    const movedCandles = Math.round((dragState.x - event.clientX) / candlePixelWidth);
+    if (Math.abs(event.clientX - dragState.x) > 4) {
+      dragMovedRef.current = true;
+    }
+    setWindow(safeVisibleCount, dragState.endIndex + movedCandles);
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (dragState) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragState(null);
+    window.setTimeout(() => {
+      dragMovedRef.current = false;
+    }, 0);
+  }
+
+  function selectCandle(row: SingleStockPriceRow) {
+    if (dragMovedRef.current) return;
+    setSelectedDate(cleanDate(row.date));
+  }
+
+  function handleChartClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (dragMovedRef.current) return;
+    const ratio = pointerRatio(event.clientX, event.currentTarget);
+    const index = Math.min(rows.length - 1, Math.max(0, Math.round(ratio * (rows.length - 1))));
+    selectCandle(rows[index]);
+  }
+
+  const visibleLabel = `${cleanDate(rows[0].date)} 至 ${cleanDate(rows[rows.length - 1].date)}`;
+  const allLabel = `${allRows.length} 条 / 显示 ${rows.length} 条`;
+
+  const width = 960;
+  const priceHeight = 260;
+  const volumeHeight = 78;
+  const top = 18;
+  const left = 54;
+  const right = 18;
+  const volumeTop = top + priceHeight + 24;
+  const height = volumeTop + volumeHeight + 28;
+  const chartWidth = width - left - right;
+  const visibleAverageValues = movingAverages
+    .flatMap((item) => item.values.slice(startIndex, safeEndIndex))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  const highs = [...rows.map((row) => Number(row.high)), ...visibleAverageValues];
+  const lows = [...rows.map((row) => Number(row.low)), ...visibleAverageValues];
+  const maxPrice = Math.max(...highs);
+  const minPrice = Math.min(...lows);
+  const priceRange = Math.max(maxPrice - minPrice, 0.01);
+  const maxVolume = Math.max(...rows.map((row) => Number(row.volume ?? 0)), 1);
+  const candleGap = chartWidth / rows.length;
+  const candleWidth = Math.max(3, Math.min(10, candleGap * 0.55));
+  const priceY = (price: number) => top + ((maxPrice - price) / priceRange) * priceHeight;
+  const volumeY = (volume: number) => volumeTop + volumeHeight - (volume / maxVolume) * volumeHeight;
+  const ticks = [maxPrice, minPrice + priceRange * 0.5, minPrice];
+  const averagePaths = movingAverages.map((item) => {
+    const points = item.values
+      .slice(startIndex, safeEndIndex)
+      .map((value, index) => {
+        if (value === null) return null;
+        const x = left + index * candleGap + candleGap / 2;
+        return `${x.toFixed(2)},${priceY(value).toFixed(2)}`;
+      })
+      .filter((value): value is string => value !== null);
+    return { ...item, points: points.join(" ") };
+  });
+  const orderMarkers = orders
+    .filter((order) => String(order.status ?? "") === "filled")
+    .map((order) => ({
+      date: cleanDate(String(order.date ?? "")),
+      side: String(order.side ?? ""),
+      quantity: Number(order.quantity ?? 0),
+      price: Number(order.price ?? 0),
+      notional: Number(order.notional ?? 0),
+    }))
+    .filter((order) => order.date && Number.isFinite(order.price));
+
+  return (
+    <div className="kline-panel">
+      <div className="kline-toolbar">
+        <div>
+          <strong>{visibleLabel}</strong>
+          <span>{allLabel}</span>
+        </div>
+        <div className="kline-toolbar-right">
+          <div className="ma-legend">
+            {movingAverages.map((item) => (
+              <span key={item.label}>
+                <i style={{ background: item.color }} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+          <span className="kline-hint">滚轮缩放，按住拖拽平移，点击蜡烛查看明细</span>
+        </div>
+      </div>
+      <div
+        className={dragState ? "kline-chart dragging" : "kline-chart"}
+        aria-label="单股K线图"
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onClick={handleChartClick}
+      >
+      <svg viewBox={`0 0 ${width} ${height}`} role="img">
+        {ticks.map((tick) => {
+          const y = priceY(tick);
+          return (
+            <g key={tick}>
+              <line x1={left} x2={width - right} y1={y} y2={y} className="chart-grid-line" />
+              <text x={12} y={y + 4} className="axis-label">
+                {tick.toFixed(2)}
+              </text>
+            </g>
+          );
+        })}
+        {rows.map((row, index) => {
+          const open = Number(row.open);
+          const high = Number(row.high);
+          const low = Number(row.low);
+          const close = Number(row.close);
+          const volume = Number(row.volume ?? 0);
+          const x = left + index * candleGap + candleGap / 2;
+          const rising = close >= open;
+          const selected = cleanDate(row.date) === cleanDate(selectedRow.date);
+          const bodyTop = priceY(Math.max(open, close));
+          const bodyHeight = Math.max(2, Math.abs(priceY(open) - priceY(close)));
+          const volumeTopY = volumeY(volume);
+          return (
+            <g
+              key={`${row.date}-${index}`}
+              className={`${rising ? "candle rising" : "candle falling"}${selected ? " selected" : ""}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                selectCandle(row);
+              }}
+            >
+              <title>
+                {`${cleanDate(row.date)} 开 ${formatNumber(open)} 高 ${formatNumber(high)} 低 ${formatNumber(
+                  low
+                )} 收 ${formatNumber(close)}`}
+              </title>
+              <line x1={x} x2={x} y1={priceY(high)} y2={priceY(low)} />
+              <rect x={x - candleWidth / 2} y={bodyTop} width={candleWidth} height={bodyHeight} rx={1} />
+              <rect
+                className="volume-bar"
+                x={x - candleWidth / 2}
+                y={volumeTopY}
+                width={candleWidth}
+                height={Math.max(1, volumeTop + volumeHeight - volumeTopY)}
+                rx={1}
+              />
+            </g>
+          );
+        })}
+        {rows.map((row, index) => {
+          const date = cleanDate(row.date);
+          const markers = orderMarkers.filter((order) => order.date === date);
+          if (!markers.length) return null;
+          const x = left + index * candleGap + candleGap / 2;
+          return markers.map((marker, markerIndex) => {
+            const y = priceY(marker.price);
+            const isBuy = marker.side === "BUY";
+            const offset = markerIndex * 12;
+            return (
+              <g className={isBuy ? "trade-marker buy" : "trade-marker sell"} key={`${date}-${marker.side}-${markerIndex}`}>
+                <title>
+                  {`${date} ${marker.side} ${formatMoney(marker.quantity)}股 @ ${formatNumber(marker.price)}，金额 ${formatMoney(marker.notional)}`}
+                </title>
+                <path
+                  d={
+                    isBuy
+                      ? `M ${x} ${y - 12 - offset} l 7 10 h -14 z`
+                      : `M ${x} ${y + 12 + offset} l 7 -10 h -14 z`
+                  }
+                />
+                <text x={x + 8} y={isBuy ? y - 8 - offset : y + 14 + offset}>
+                  {isBuy ? "B" : "S"}
+                </text>
+              </g>
+            );
+          });
+        })}
+        {averagePaths.map((item) =>
+          item.points ? (
+            <polyline
+              key={item.label}
+              points={item.points}
+              fill="none"
+              stroke={item.color}
+              strokeWidth={1.6}
+              className="ma-line"
+            />
+          ) : null
+        )}
+        <line x1={left} x2={width - right} y1={volumeTop + volumeHeight} y2={volumeTop + volumeHeight} className="axis-line" />
+        <text x={left} y={height - 6} className="axis-label">
+          {cleanDate(rows[0].date)}
+        </text>
+        <text x={width - right - 78} y={height - 6} className="axis-label">
+          {cleanDate(rows[rows.length - 1].date)}
+        </text>
+      </svg>
+      </div>
+      <div className="kline-detail-grid">
+        <KpiLine label="日期" value={cleanDate(selectedRow.date)} />
+        <KpiLine label="开盘" value={formatNumber(Number(selectedRow.open))} />
+        <KpiLine label="收盘" value={formatNumber(Number(selectedRow.close))} />
+        <KpiLine label="最高" value={formatNumber(Number(selectedRow.high))} />
+        <KpiLine label="最低" value={formatNumber(Number(selectedRow.low))} />
+        <KpiLine
+          label="涨跌幅"
+          value={selectedPctChange === null ? "-" : formatPct(selectedPctChange)}
+          intent={selectedPctChange !== null && selectedPctChange < 0 ? "danger" : undefined}
+        />
+        <KpiLine label="成交量" value={formatMoney(Number(selectedRow.volume ?? 0))} />
+        <KpiLine label="成交额" value={formatMoney(Number(selectedRow.turnover ?? 0))} />
+        <KpiLine label="数据源" value={selectedRow.source ?? "-"} />
+      </div>
     </div>
   );
 }

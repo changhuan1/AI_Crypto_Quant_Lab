@@ -12,10 +12,16 @@ import type {
   NavRow,
   OrderRow,
   Overview,
+  PlatformReadiness,
   PositionRow,
+  PortfolioPayload,
+  PortfolioResponse,
   RunRow,
   SingleStockPayload,
+  SingleStockProfile,
   SingleStockResponse,
+  SingleStockStrategyScript,
+  SingleStockStrategyScriptPayload,
   StrategyRow
 } from "./types";
 
@@ -56,8 +62,31 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload)
     }),
+  runPortfolio: (payload: PortfolioPayload) =>
+    request<PortfolioResponse>("/api/portfolio/backtests", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  platformReadiness: () => request<PlatformReadiness>("/api/platform/readiness"),
   runSingleStock: (payload: SingleStockPayload) =>
     request<SingleStockResponse>("/api/single-stock/backtests", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  singleStockProfile: (assetCode: string, startDate?: string, endDate?: string, limit = 120) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (startDate) params.set("start_date", startDate);
+    if (endDate) params.set("end_date", endDate);
+    return request<SingleStockProfile>(`/api/single-stock/${assetCode}/profile?${params.toString()}`);
+  },
+  pullSingleStockPrices: (assetCode: string, startDate: string, endDate: string) =>
+    request<SingleStockProfile>(`/api/single-stock/${assetCode}/prices/pull`, {
+      method: "POST",
+      body: JSON.stringify({ start_date: startDate, end_date: endDate })
+    }),
+  singleStockStrategyScripts: () => request<SingleStockStrategyScript[]>("/api/single-stock/strategy-scripts"),
+  saveSingleStockStrategyScript: (payload: SingleStockStrategyScriptPayload) =>
+    request<SingleStockStrategyScript>("/api/single-stock/strategy-scripts", {
       method: "POST",
       body: JSON.stringify(payload)
     })
